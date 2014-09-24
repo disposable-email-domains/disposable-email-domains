@@ -9,6 +9,6 @@ Feel free to create PR with more or request removing of your domain (with reason
 
 Use 
 
-`cat disposable_email_blacklist.conf your_file | sort | uniq > disposable_email_blacklist.conf` 
+`cat disposable_email_blacklist.conf your_file | uniq -i | sort -f > disposable_email_blacklist.conf`
 
 to add contents of another file in the same format (domains on new line without @).
