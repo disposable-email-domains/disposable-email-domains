@@ -5,12 +5,12 @@ This repo contains a list of disposable and temporary email address domains ofte
 
 I originally collected some of them to filter allowed domains for new user registration at usegalaxy.org and later merged them with other lists I have found online. I cannot guarantee all of these can still be considered disposable but they probably were at one point in time.
 
-Feel free to create PR with additions or request removal of some domain (with reasons).
-
 Contributing
 ============
+Feel free to create PR with additions or request removal of some domain (with reasons).
+
 Use 
 
-`cat disposable_email_blacklist.conf your_file | sort -f | uniq -i  > disposable_email_blacklist.conf`
+`cat disposable_email_blacklist.conf your_file | sort -f | uniq -i  > new_file`
 
 to add contents of another file in the same format (domains on new line without @).
