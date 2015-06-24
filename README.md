@@ -5,6 +5,25 @@ This repo contains a list of disposable and temporary email address domains ofte
 
 Originally collected to filter new user registration at https://usegalaxy.org and later merged with other lists found online. I cannot guarantee all of these can still be considered disposable but they probably were at one point in time.
 
+Example Usage
+=============
+PHP
+```php
+function is_temp_mail($mail) {
+
+                $list = file_get_contents ('disposable_email_blacklist.conf');
+                $mail_domains_ko = explode("\n", $list);
+
+                foreach($mail_domains_ko as $ko_mail) {
+            list(,$mail_domain) = explode('@',$mail);
+            if(strcasecmp($mail_domain, $ko_mail) == 0){
+                    return true;
+            }
+    }
+    return false;
+}
+```
+
 Contributing
 ============
 Feel free to create PR with additions or request removal of some domain (with reasons).
