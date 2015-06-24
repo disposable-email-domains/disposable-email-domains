@@ -7,17 +7,27 @@ Originally collected to filter new user registration at https://usegalaxy.org an
 
 Example Usage
 =============
+Python
+```Python
+blacklist = ('disposable_email_blacklist.conf')
+blacklist_content = [line.rstrip() for line in blacklist.readlines()]
+if email.split('@')[1] in blacklist_content:
+    message = "Please enter your permanent email address."
+    return (False, message)
+else:
+    return True
+```
 PHP
 ```php
 function is_temp_mail($mail) {
-  $list = file_get_contents ('disposable_email_blacklist.conf');
-  $mail_domains_ko = explode("\n", $list);
-  foreach($mail_domains_ko as $ko_mail) {
-    list(,$mail_domain) = explode('@',$mail);
-    if(strcasecmp($mail_domain, $ko_mail) == 0){
-      return true;
+    $list = file_get_contents ('disposable_email_blacklist.conf');
+    $mail_domains_ko = explode("\n", $list);
+    foreach($mail_domains_ko as $ko_mail) {
+        list(,$mail_domain) = explode('@',$mail);
+        if(strcasecmp($mail_domain, $ko_mail) == 0){
+            return true;
+        }
     }
-  }
     return false;
 }
 ```
