@@ -10,16 +10,14 @@ Example Usage
 PHP
 ```php
 function is_temp_mail($mail) {
-
-                $list = file_get_contents ('disposable_email_blacklist.conf');
-                $mail_domains_ko = explode("\n", $list);
-
-                foreach($mail_domains_ko as $ko_mail) {
-            list(,$mail_domain) = explode('@',$mail);
-            if(strcasecmp($mail_domain, $ko_mail) == 0){
-                    return true;
-            }
+  $list = file_get_contents ('disposable_email_blacklist.conf');
+  $mail_domains_ko = explode("\n", $list);
+  foreach($mail_domains_ko as $ko_mail) {
+    list(,$mail_domain) = explode('@',$mail);
+    if(strcasecmp($mail_domain, $ko_mail) == 0){
+      return true;
     }
+  }
     return false;
 }
 ```
