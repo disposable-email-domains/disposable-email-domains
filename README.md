@@ -7,7 +7,7 @@ Originally collected to filter new user registration at https://usegalaxy.org an
 
 Example Usage
 =============
-Python
+Python (thanks to @txt3rob)
 ```Python
 blacklist = ('disposable_email_blacklist.conf')
 blacklist_content = [line.rstrip() for line in blacklist.readlines()]
