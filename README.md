@@ -7,7 +7,7 @@ Originally collected to filter new user registration at https://usegalaxy.org an
 
 Example Usage
 =============
-Python (thanks to @txt3rob)
+Python
 ```Python
 blacklist = ('disposable_email_blacklist.conf')
 blacklist_content = [line.rstrip() for line in blacklist.readlines()]
@@ -17,7 +17,7 @@ if email.split('@')[1] in blacklist_content:
 else:
     return True
 ```
-PHP
+PHP contributed by @txt3rob
 ```php
 function is_temp_mail($mail) {
     $list = file_get_contents ('disposable_email_blacklist.conf');
