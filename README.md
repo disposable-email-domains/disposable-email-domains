@@ -5,6 +5,10 @@ This repo contains a list of disposable and temporary email address domains ofte
 
 Originally collected to filter new user registration at https://usegalaxy.org and later merged with other lists found online. I cannot guarantee all of these can still be considered disposable but they probably were at one point in time.
 
+Whitelist
+=========
+The file whitelist.conf gathers email domains that are often identified as disposable but in fact are not.
+
 Example Usage
 =============
 Python
