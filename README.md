@@ -38,7 +38,8 @@ Feel free to create PR with additions or request removal of some domain (with re
 
 Use 
 
-`cat disposable_email_blacklist.conf your_file | tr '[:upper:]' '[:lower:]' | sort -f | uniq -i  > new_file.conf`
-`comm -23 new_file.conf whitelist.conf > disposable_email_blacklist.conf`
+`$ cat disposable_email_blacklist.conf your_file | tr '[:upper:]' '[:lower:]' | sort -f | uniq -i  > new_file.conf`
+
+`$ comm -23 new_file.conf whitelist.conf > disposable_email_blacklist.conf`
 
 to add contents of another file in the same format (domains on new line without @). It also converts uppercase to lowercase, sorts, removes duplicates and removes whitelisted domains.
