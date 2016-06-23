@@ -21,7 +21,7 @@ if email.split('@')[1] in blacklist_content:
 else:
     return True
 ```
-PHP contributed by @txt3rob
+PHP contributed by @txt3rob and @deguif
 ```php
 function is_temp_mail($mail) {
     $mail_domains_ko = file('disposable_email_blacklist.conf', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
