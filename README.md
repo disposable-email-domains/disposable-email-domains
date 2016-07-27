@@ -41,4 +41,4 @@ Use
 
 `$ comm -23 new_file.conf whitelist.conf > disposable_email_blacklist.conf`
 
-to add contents of another file in the same format (domains on new line without @). It also converts uppercase to lowercase, sorts, removes duplicates and removes whitelisted domains.
+to add contents of another file in the same format (only second level domains on new line without @). It also converts uppercase to lowercase, sorts, removes duplicates and removes whitelisted domains.
