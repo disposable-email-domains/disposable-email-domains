@@ -1,7 +1,7 @@
 List of disposable email domains
 ========================
 
-![Licensed under CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)
+[![Licensed under CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/)
 
 This repo contains a [list of disposable and temporary email address domains](disposable_email_blacklist.conf) often used to register dummy users in order to spam/abuse some services. 
 
