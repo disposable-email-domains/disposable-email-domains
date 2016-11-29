@@ -13,7 +13,7 @@ The file [whitelist.conf](whitelist.conf) gathers email domains that are often i
 
 Example Usage
 =============
-Python
+**Python**
 ```Python
 blacklist = ('disposable_email_blacklist.conf')
 blacklist_content = [line.rstrip() for line in blacklist.readlines()]
@@ -23,7 +23,7 @@ if email.split('@')[1] in blacklist_content:
 else:
     return True
 ```
-PHP contributed by @txt3rob and @deguif
+**PHP** contributed by @txt3rob and @deguif
 ```php
 function is_temp_mail($mail) {
     $mail_domains_ko = file('disposable_email_blacklist.conf', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -32,7 +32,7 @@ function is_temp_mail($mail) {
     return in_array(explode('@', $mail)[1], $mail_domains_ko);
 }
 ```
-Ruby on Rails
+**Ruby on Rails** contributed by @MitsunChieh
 
 In resource model, usually it is `user.rb`
 ```Ruby
