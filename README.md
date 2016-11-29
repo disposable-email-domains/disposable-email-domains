@@ -32,6 +32,23 @@ function is_temp_mail($mail) {
     return in_array(explode('@', $mail)[1], $mail_domains_ko);
 }
 ```
+Ruby on Rails
+
+In resource model, usually it is `user.rb`
+```Ruby
+before_validation :reject_email_blacklist
+
+def reject_email_blacklist
+  blacklist = File.read('config/disposable_email_blacklist.conf').split("\n")
+
+  if blacklist.include?(email.split('@')[1])
+    errors[:email] << 'invalid email'
+    return false
+  else
+    return true
+  end
+end
+```
 
 Contributing
 ============
