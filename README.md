@@ -23,6 +23,14 @@ if email.split('@')[1] in blacklist_content:
 else:
     return True
 ```
+
+Available as [PyPI module](https://pypi.python.org/pypi/disposable-email-domains) thanks to @di
+```
+>>> from disposable_email_domains import blacklist
+>>> 'bearsarefuzzy.com' in blacklist
+True
+```
+
 **PHP** contributed by @txt3rob and @deguif
 ```php
 function is_temp_mail($mail) {
@@ -64,4 +72,6 @@ to add contents of another file in the same format (only second level domains on
 
 Changelog
 ============
+
+12/6/16 - Available as [PyPI module](https://pypi.python.org/pypi/disposable-email-domains) thanks to @di
 7/27/16 - Converted all domains to the second level. This means that starting from [this commit](https://github.com/martenson/disposable-email-domains/commit/61ae67aacdab0b19098de2e13069d7c35b74017a) the implementers should take care of matching the second level domain names properly i.e. `@xxx.yyy.zzz` should match `yyy.zzz` in blacklist more info in [#46](https://github.com/martenson/disposable-email-domains/issues/46)
