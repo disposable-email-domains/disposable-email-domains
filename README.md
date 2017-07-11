@@ -57,7 +57,7 @@ def reject_email_blacklist
   end
 end
 ```
-**NodeJs ** contributed by @martin-fogelman
+**Node.js** contributed by @martin-fogelman
 ```Node
 'use strict';
 
@@ -83,6 +83,16 @@ rl.on('close', () => {
 		console.log(e);
 	}
 });
+
+// EXAMPLE CHECK EMAIL FUN
+const checkEmailAgainstList  = (email, domainArray) => {
+	email = email.split('@')[1];
+	return domainArray.includes(email);
+};
+
+// EXAMPLE USE
+console.log(checkEmailAgainstList('test@gmail.com', output);)
+
 ```
 
 Contributing
