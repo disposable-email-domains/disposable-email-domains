@@ -57,31 +57,32 @@ def reject_email_blacklist
   end
 end
 ```
-**NodeJs ** contributed by @martin-fogelman
+**NodeJs** contributed by @martin-fogelman
+
 ```Node
 'use strict';
 
 const readline = require('readline'),
-	fs = require('fs');
+  fs = require('fs');
 
 const input = fs.createReadStream('./disposable_email_blacklist.conf'),
-	output = [],
-	rl = readline.createInterface({input});
+  output = [],
+  rl = readline.createInterface({input});
 
 // PROCESS LINES
 rl.on('line', (line) => {
-	console.log(`Processing line ${output.length}`);
-	output.push(line);
+  console.log(`Processing line ${output.length}`);
+  output.push(line);
 });
 
 // SAVE AS JSON
 rl.on('close', () => {
-	try {
-		const json = JSON.stringify(output);
-		fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
-	} catch (e) {
-		console.log(e);
-	}
+  try {
+  const json = JSON.stringify(output);
+  fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
+  } catch (e) {
+    console.log(e);
+  }
 });
 ```
 
