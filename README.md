@@ -78,8 +78,8 @@ rl.on('line', (line) => {
 // SAVE AS JSON
 rl.on('close', () => {
   try {
-  const json = JSON.stringify(output);
-  fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
+    const json = JSON.stringify(output);
+    fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
   } catch (e) {
     console.log(e);
   }
