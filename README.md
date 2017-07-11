@@ -86,7 +86,7 @@ rl.on('close', () => {
 		const json = JSON.stringify(output);
 		fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
 		// EXAMPLE USE
-		console.log(checkEmailAgainstList('test@slipry.net', output));
+		console.log(isOnEmailDomainList('test@slipry.net', output));
 	} catch (e) {
 		console.log(e);
 	}
