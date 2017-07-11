@@ -74,24 +74,23 @@ rl.on('line', (line) => {
 	output.push(line);
 });
 
+// EXAMPLE CHECK EMAIL FUN
+const isOnEmailDomainList  = (email, domainArray) => {
+	email = email.split('@')[1];
+	return domainArray.includes(email);
+};
+
 // SAVE AS JSON
 rl.on('close', () => {
 	try {
 		const json = JSON.stringify(output);
 		fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
+		// EXAMPLE USE
+		console.log(checkEmailAgainstList('test@slipry.net', output));
 	} catch (e) {
 		console.log(e);
 	}
 });
-
-// EXAMPLE CHECK EMAIL FUN
-const checkEmailAgainstList  = (email, domainArray) => {
-	email = email.split('@')[1];
-	return domainArray.includes(email);
-};
-
-// EXAMPLE USE
-console.log(checkEmailAgainstList('test@gmail.com', output);)
 
 ```
 
