@@ -61,35 +61,36 @@ end
 ```Node
 'use strict';
 
+// EXAMPLE EMAIL CHECK
+const isOnEmailDomainList  = (email, domainArray) => {
+  email = email.split('@')[1];
+  return domainArray.includes(email);
+};
+
+// EXAMPLE PROCESSING OF CONFIG FILE INTO JSON
 const readline = require('readline'),
-	fs = require('fs');
+  fs = require('fs');
 
 const input = fs.createReadStream('./disposable_email_blacklist.conf'),
-	output = [],
-	rl = readline.createInterface({input});
+  output = [],
+  rl = readline.createInterface({input});
 
 // PROCESS LINES
 rl.on('line', (line) => {
-	console.log(`Processing line ${output.length}`);
-	output.push(line);
+  console.log(`Processing line ${output.length}`);
+  output.push(line);
 });
-
-// EXAMPLE CHECK EMAIL FUN
-const isOnEmailDomainList  = (email, domainArray) => {
-	email = email.split('@')[1];
-	return domainArray.includes(email);
-};
 
 // SAVE AS JSON
 rl.on('close', () => {
-	try {
-		const json = JSON.stringify(output);
-		fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
-		// EXAMPLE USE
-		console.log(isOnEmailDomainList('test@slipry.net', output));
-	} catch (e) {
-		console.log(e);
-	}
+  try {
+    const json = JSON.stringify(output);
+    fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
+    // EXAMPLE USE OF EMAIL CHECK
+    console.log(isOnEmailDomainList('test@slipry.net', output));
+  } catch (e) {
+  console.log(e);
+  }
 });
 
 ```
