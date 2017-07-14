@@ -67,26 +67,28 @@ const isOnEmailDomainList  = (email, domainArray) => {
   return domainArray.includes(email);
 };
 
-// EXAMPLE PROCESSING OF CONFIG FILE INTO JSON
+// EXAMPLE CONFIG FILE ->> JSON
+// imports
 const readline = require('readline'),
   fs = require('fs');
 
+// setup
 const input = fs.createReadStream('./disposable_email_blacklist.conf'),
   output = [],
   rl = readline.createInterface({input});
 
-// PROCESS LINES
+// process config line-by-line
 rl.on('line', (line) => {
   console.log(`Processing line ${output.length}`);
   output.push(line);
 });
 
-// SAVE AS JSON
+// output new array as JSON
 rl.on('close', () => {
   try {
     const json = JSON.stringify(output);
     fs.writeFile('disposable_email_blacklist.json', json, () => console.log('--- FINISHED ---'));
-    // EXAMPLE USE OF EMAIL CHECK
+    // example use of email check
     console.log(isOnEmailDomainList('test@slipry.net', output));
   } catch (e) {
   console.log(e);
