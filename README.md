@@ -86,6 +86,30 @@ rl.on('close', () => {
 });
 ```
 
+**C#**
+```C#
+private static readonly Lazy<HashSet<string>> _emailBlackList =
+  new Lazy<HashSet<string>>(
+    () =>
+    {
+      var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+      using (var reader = new StreamReader("disposable_email_blacklist.conf"))
+      {
+        string line;
+        while ((line = reader.ReadLine()) != null)
+          if (!string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("//"))
+            result.Add(line);
+      }
+      return result;
+    });
+
+...
+
+var addr = new MailAddress(email);
+if (_emailBlackList.Value.Contains(addr.Host)))
+  throw new ApplicationException("Email is blacklisted.");
+```
+
 Contributing
 ============
 Feel free to create PR with additions or request removal of some domain (with reasons).
