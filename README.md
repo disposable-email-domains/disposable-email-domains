@@ -103,10 +103,20 @@ private static readonly Lazy<HashSet<string>> _emailBlackList =
       return result;
     });
 
+private static bool IsBlacklisted(string domain)
+{
+  var parts = domain.Split('.');
+  var len = parts.Length;
+  return
+    len == 1 && _emailBlackList.Value.Contains(domain)
+    || _emailBlackList.Value.Contains($"{parts[len - 2]}.{parts[len - 1]}")
+    || len > 2 && _emailBlackList.Value.Contains($"{parts[len - 3]}.{parts[len - 2]}.{parts[len - 1]}");
+}
+
 ...
 
 var addr = new MailAddress(email);
-if (_emailBlackList.Value.Contains(addr.Host)))
+if (IsBlacklisted(addr.Host)))
   throw new ApplicationException("Email is blacklisted.");
 ```
 
