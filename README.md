@@ -31,14 +31,16 @@ Available as [PyPI module](https://pypi.python.org/pypi/disposable-email-domains
 True
 ```
 
-**PHP** contributed by @txt3rob and @deguif
+**PHP** contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.com/deguif) and [@pjebs](https://github.com/pjebs)
 ```php
-function is_temp_mail($mail) {
-    $mail_domains_ko = file('disposable_email_blacklist.conf', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-    //Need to ensure the mail contains an @ to avoid undefined offset
-    return in_array(explode('@', $mail)[1], $mail_domains_ko);
+function is_disposable_email($email) {
+  $path = realpath(dirname(__FILE__)) . '/disposable_email_blacklist.conf';
+  $mail_domains_ko = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+  $mail_domains_ko = array_combine($mail_domains_ko, array_fill(0,count($mail_domains_ko), null));
+  $domain = mb_strtolower(explode('@', trim($email))[1])
+  return (isset($mail_domains_ko[$domain]) || array_key_exists($domain, $mail_domains_ko));
 }
+
 ```
 **Ruby on Rails** contributed by @MitsunChieh
 
