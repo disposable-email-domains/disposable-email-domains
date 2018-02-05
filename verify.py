@@ -7,11 +7,14 @@ import io
 import sys
 
 from publicsuffixlist import PublicSuffixList
+from requests import get
 
 def main(arguments):
-    psl = PublicSuffixList()
     suffix_detected = False
-
+    psl = None
+    download_suffixes()
+    with open("public_suffix_list.dat", "r") as latest:
+        psl = PublicSuffixList(latest)
     with io.open('disposable_email_blacklist.conf', 'r') as deb:
         for i, line in enumerate(deb):
             current_line = line.strip()
@@ -22,6 +25,12 @@ def main(arguments):
     if suffix_detected:
         print ('At least one valid public suffix found in the blacklist, please remove it. See https://publicsuffix.org for details on why this shouldn\'t be blacklisted.')
         sys.exit(1)
+
+def download_suffixes():
+    with open('public_suffix_list.dat', "wb") as file:
+        response = get('https://publicsuffix.org/list/public_suffix_list.dat')
+        file.write(response.content)
+
 
 
 if __name__ == "__main__":
