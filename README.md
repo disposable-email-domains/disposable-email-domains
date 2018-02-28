@@ -24,7 +24,7 @@ else:
     return True
 ```
 
-Available as [PyPI module](https://pypi.python.org/pypi/disposable-email-domains) thanks to [@di](https://github.com/di)
+Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
 ```
 >>> from disposable_email_domains import blacklist
 >>> 'bearsarefuzzy.com' in blacklist
@@ -138,6 +138,6 @@ Changelog
 
 * 7/31/17 @deguif [joined](https://github.com/martenson/disposable-email-domains/issues/106) as a core maintainer of this project. Thanks!
 
-* 12/6/16 - Available as [PyPI module](https://pypi.python.org/pypi/disposable-email-domains) thanks to [@di](https://github.com/di)
+* 12/6/16 - Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
 
 * 7/27/16 - Converted all domains to the second level. This means that starting from [this commit](https://github.com/martenson/disposable-email-domains/commit/61ae67aacdab0b19098de2e13069d7c35b74017a) the implementers should take care of matching the second level domain names properly i.e. `@xxx.yyy.zzz` should match `yyy.zzz` in blacklist more info in [#46](https://github.com/martenson/disposable-email-domains/issues/46)
