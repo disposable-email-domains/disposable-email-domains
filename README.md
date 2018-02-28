@@ -25,7 +25,7 @@ else:
 ```
 
 Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
-```
+```python
 >>> from disposable_email_domains import blacklist
 >>> 'bearsarefuzzy.com' in blacklist
 True
