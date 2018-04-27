@@ -89,30 +89,14 @@ rl.on('close', () => {
 
 **C#**
 ```C#
-private static readonly Lazy<HashSet<string>> _emailBlackList =
-  new Lazy<HashSet<string>>(
-    () =>
-    {
-      var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-      using (var reader = new StreamReader("disposable_email_blacklist.conf"))
-      {
-        string line;
-        while ((line = reader.ReadLine()) != null)
-          if (!string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("//"))
-            result.Add(line);
-      }
-      return result;
-    });
+private static readonly Lazy<HashSet<string>> _emailBlackList = new Lazy<HashSet<string>>(() =>
+{ 
+  var lines = File.ReadLines("disposable_email_blacklist.conf")
+    .Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("//"));
+  return new HashSet<string>(lines, StringComparer.OrdinalIgnoreCase);
+});
 
-private static bool IsBlacklisted(string domain)
-{
-  var parts = domain.Split('.');
-  var len = parts.Length;
-  return
-    len == 1 && _emailBlackList.Value.Contains(domain)
-    || _emailBlackList.Value.Contains($"{parts[len - 2]}.{parts[len - 1]}")
-    || len > 2 && _emailBlackList.Value.Contains($"{parts[len - 3]}.{parts[len - 2]}.{parts[len - 1]}");
-}
+private static bool IsBlacklisted(string domain) => _emailBlackList.Value.Contains(domain);
 
 ...
 
