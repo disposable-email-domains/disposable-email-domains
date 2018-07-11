@@ -31,14 +31,16 @@ Available as [PyPI module](https://pypi.org/project/disposable-email-domains) th
 True
 ```
 
-**PHP** contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.com/deguif) and [@pjebs](https://github.com/pjebs)
+**PHP** contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.com/deguif), [@pjebs](https://github.com/pjebs) and [@Wruczek](https://github.com/Wruczek)
+
+1. Make sure the passed email is valid. You can check that with [filter_var](https://secure.php.net/manual/en/function.filter-var.php)
+2. Make sure you have the mbstring extension installed on your server
 ```php
-function is_disposable_email($email) {
-  $path = realpath(dirname(__FILE__)) . '/disposable_email_blacklist.conf';
-  $mail_domains_ko = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-  $mail_domains_ko = array_fill_keys($mail_domains_ko, true);
-  $domain = mb_strtolower(explode('@', trim($email))[1]);
-  return (isset($mail_domains_ko[$domain]) || array_key_exists($domain, $mail_domains_ko));
+function isDisposableEmail($email, $blacklist_path = null) {
+    if (!$blacklist_path) $blacklist_path = __DIR__ . '/disposable_email_blacklist.conf';
+    $disposable_domains = file($blacklist_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    $domain = mb_strtolower(explode('@', trim($email))[1]);
+    return in_array($domain, $disposable_domains);
 }
 ```
 **Ruby on Rails** contributed by [@MitsunChieh](https://github.com/MitsunChieh)
