@@ -26,7 +26,7 @@ else:
 
 Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
 ```python
->>> from disposable_email_domains import blacklist as blocklist
+>>> from disposable_email_domains import blocklist
 >>> 'bearsarefuzzy.com' in blocklist
 True
 ```
