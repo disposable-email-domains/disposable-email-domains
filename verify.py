@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""Verify the integrity of the domain blacklist
+"""Verify the integrity of the domain blocklist
 """
 
 import io
@@ -11,11 +11,11 @@ from publicsuffixlist import PublicSuffixList
 from requests import get
 
 
-blacklist = "disposable_email_blacklist.conf"
-whitelist = "whitelist.conf"
+blocklist = "disposable_email_blocklist.conf"
+allowlist = "allowlist.conf"
 
 files = {
-    filename: open(filename).read().splitlines() for filename in [whitelist, blacklist]
+    filename: open(filename).read().splitlines() for filename in [allowlist, blocklist]
 }
 
 
@@ -44,7 +44,7 @@ def check_for_public_suffixes(filename):
         print(
             "At least one valid public suffix found in {!r}, please "
             "remove it. See https://publicsuffix.org for details on why this "
-            "shouldn't be blacklisted.".format(filename)
+            "shouldn't be blocklisted.".format(filename)
         )
         sys.exit(1)
 
@@ -91,19 +91,19 @@ def check_for_intersection(filename_a, filename_b):
 if __name__ == "__main__":
 
     # Check if any domains have a public suffix
-    check_for_public_suffixes(blacklist)
+    check_for_public_suffixes(blocklist)
 
     # Check if any domains are not lowercase
-    check_for_non_lowercase(whitelist)
-    check_for_non_lowercase(blacklist)
+    check_for_non_lowercase(allowlist)
+    check_for_non_lowercase(blocklist)
 
     # Check if any domains are duplicated in the same list
-    check_for_duplicates(whitelist)
-    check_for_duplicates(blacklist)
+    check_for_duplicates(allowlist)
+    check_for_duplicates(blocklist)
 
     # Check if any lists are not sorted
-    check_sort_order(whitelist)
-    check_sort_order(blacklist)
+    check_sort_order(allowlist)
+    check_sort_order(blocklist)
 
-    # Check if any domains are in both the whitelist and blacklist
-    check_for_intersection(whitelist, blacklist)
+    # Check if any domains are in both the allowlist and blocklist
+    check_for_intersection(allowlist, blocklist)
