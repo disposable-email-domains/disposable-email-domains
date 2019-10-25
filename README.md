@@ -3,9 +3,9 @@ List of disposable email domains
 
 [![Licensed under CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/)
 
-This repo contains a [list of disposable and temporary email address domains](disposable_email_blocklist.conf) often used to register dummy users in order to spam/abuse some services.
+This repo contains a [list of disposable and temporary email address domains](disposable_email_blocklist.conf) often used to register dummy users in order to spam or abuse some services.
 
-Originally collected to filter new user registration at https://usegalaxy.org and later merged with other lists found online. I cannot guarantee all of these can still be considered disposable but they probably were at one point in time.
+We cannot guarantee all of these can still be considered disposable but we do basic checking so chances are they were disposable at one point in time.
 
 Allowlist
 =========
