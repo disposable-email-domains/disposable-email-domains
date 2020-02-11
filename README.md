@@ -111,7 +111,9 @@ Contributing
 ============
 Feel free to create PR with additions or request removal of some domain (with reasons).
 
-Use
+Specifically, if adding more than one new domain, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.
+
+Use:
 
 `$ cat disposable_email_blocklist.conf your_file | tr '[:upper:]' '[:lower:]' | sort -f | uniq -i  > new_file.conf`
 
