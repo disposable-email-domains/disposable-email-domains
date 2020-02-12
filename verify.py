@@ -29,7 +29,6 @@ def check_for_public_suffixes(filename):
     lines = files[filename]
     suffix_detected = False
     psl = None
-    download_suffixes()
     with open("public_suffix_list.dat", "r") as latest:
         psl = PublicSuffixList(latest)
     for i, line in enumerate(lines):
@@ -46,6 +45,22 @@ def check_for_public_suffixes(filename):
             "remove it. See https://publicsuffix.org for details on why this "
             "shouldn't be blocklisted.".format(filename)
         )
+        sys.exit(1)
+
+
+def check_for_third_level_domains(filename):
+    with open("public_suffix_list.dat", "r") as latest:
+        psl = PublicSuffixList(latest)
+
+    invalid = {
+        line
+        for line in files[filename]
+        if len(psl.privateparts(line.strip())) > 1
+    }
+    if invalid:
+        print("The following domains contain a third or lower level domain in {!r}:".format(filename))
+        for line in sorted(invalid):
+            print("* {}".format(line))
         sys.exit(1)
 
 
@@ -86,12 +101,18 @@ def check_for_intersection(filename_a, filename_b):
         print("The following domains appear in both lists:")
         for line in sorted(intersection):
             print("* {}".format(line))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
+    # Download the list of public suffixes
+    download_suffixes()
 
     # Check if any domains have a public suffix
     check_for_public_suffixes(blocklist)
+
+    # Check if any domains are a third or lower level domain
+    check_for_third_level_domains(blocklist)
 
     # Check if any domains are not lowercase
     check_for_non_lowercase(allowlist)
