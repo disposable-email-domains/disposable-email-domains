@@ -86,6 +86,7 @@ def check_for_intersection(filename_a, filename_b):
         print("The following domains appear in both lists:")
         for line in sorted(intersection):
             print("* {}".format(line))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
