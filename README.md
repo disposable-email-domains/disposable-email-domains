@@ -124,6 +124,8 @@ to add contents of another file in the same format (only second level domains on
 Changelog
 ============
 
+* 2/11/21 We created a github [org account](https://github.com/disposable-email-domains) and transferred the repository to it.
+
 * 4/18/19 [@di](https://github.com/di) [joined](https://github.com/martenson/disposable-email-domains/issues/205) as a core maintainer of this project. Thank you!
 
 * 7/31/17 [@deguif](https://github.com/deguif) [joined](https://github.com/martenson/disposable-email-domains/issues/106) as a core maintainer of this project. Thanks!
