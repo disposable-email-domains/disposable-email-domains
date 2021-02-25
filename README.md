@@ -115,6 +115,12 @@ Specifically, if adding more than one new domain, please cite in your PR where o
 
 Use:
 
+if your system's localization settings are non-English (such as Chinese), please execute
+
+`$ LC_ALL=C; export LC_ALL`
+
+to temporary change the localization settings so that the `sort` command can produce the right order, then
+
 `$ cat disposable_email_blocklist.conf your_file | tr '[:upper:]' '[:lower:]' | sort -f | uniq -i  > new_file.conf`
 
 `$ comm -23 new_file.conf allowlist.conf > disposable_email_blocklist.conf`
