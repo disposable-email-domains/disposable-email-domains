@@ -115,17 +115,7 @@ Specifically, if adding more than one new domain, please cite in your PR where o
 
 Use:
 
-if your system's localization settings are non-English (such as Chinese), please execute
-
-`$ LC_ALL=C; export LC_ALL`
-
-to temporary change the localization settings so that the `sort` command can produce the right order, then
-
-`$ cat disposable_email_blocklist.conf your_file | tr '[:upper:]' '[:lower:]' | sort -f | uniq -i  > new_file.conf`
-
-`$ comm -23 new_file.conf allowlist.conf > disposable_email_blocklist.conf`
-
-to add contents of another file in the same format (only second level domains on new line without @). It also converts uppercase to lowercase, sorts, removes duplicates and removes allowlisted domains.
+Add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
 
 Changelog
 ============
