@@ -128,3 +128,5 @@ if __name__ == "__main__":
 
     # Check if any domains are in both the allowlist and blocklist
     check_for_intersection(allowlist, blocklist)
+
+    print("All domain entries seem valid.")
