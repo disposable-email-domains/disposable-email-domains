@@ -45,7 +45,8 @@ function isDisposableEmail($email, $blocklist_path = null) {
 ```
 **Ruby on Rails** contributed by [@MitsunChieh](https://github.com/MitsunChieh)
 
-In resource model, usually it is `user.rb`
+In the resource model, usually it is `user.rb`:
+
 ```Ruby
 before_validation :reject_email_blocklist
 
@@ -60,6 +61,9 @@ def reject_email_blocklist
   end
 end
 ```
+
+Alternatively you can use the `disposable_mail` gem: https://github.com/oesgalha/disposable_mail.
+
 **NodeJs** contributed by [@martin-fogelman](https://github.com/martin-fogelman)
 
 ```Node
