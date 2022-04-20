@@ -56,6 +56,7 @@ func init() {
 	}
 	f.Close()
 }
+
 func isDisposableEmail(email string) (disposable bool) {
 	segs := strings.Split(email, "@")
 	_, disposable = disposableList[strings.ToLower(segs[len(segs)-1])]
