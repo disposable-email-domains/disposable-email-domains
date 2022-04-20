@@ -43,6 +43,9 @@ function isDisposableEmail($email, $blocklist_path = null) {
     return in_array($domain, $disposable_domains);
 }
 ```
+
+Alternatively you can use the `elliotjreed/disposable-emails-filter` Composer package: https://packagist.org/packages/elliotjreed/disposable-emails-filter / https://github.com/elliotjreed/disposable-emails-filter-php (automatically updated daily).
+
 **Ruby on Rails** contributed by [@MitsunChieh](https://github.com/MitsunChieh)
 
 In the resource model, usually it is `user.rb`:
