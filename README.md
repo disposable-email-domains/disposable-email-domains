@@ -16,7 +16,7 @@ Example Usage
 **Python**
 ```Python
 with open('disposable_email_blocklist.conf') as blocklist:
-    blocklist_content = [line.rstrip() for line in blocklist.readlines()]
+    blocklist_content = {line.rstrip() for line in blocklist.readlines()}
 if email.split('@')[1] in blocklist_content:
     message = "Please enter your permanent email address."
     return (False, message)
