@@ -47,7 +47,7 @@ function isDisposableEmail($email, $blocklist_path = null) {
 **Go** contributed by [@pjebs](https://github.com/pjebs)
 
 ```go
-import ("bufio"; "fmt"; "os"; "strings";)
+import ("bufio"; "os"; "strings";)
 var disposableList = make(map[string]struct{}, 3500)
 func init() {
 	f, _ := os.Open("disposable_email_blocklist.conf")
