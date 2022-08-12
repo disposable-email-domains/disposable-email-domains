@@ -15,9 +15,9 @@ Example Usage
 =============
 **Python**
 ```Python
-blocklist = ('disposable_email_blocklist.conf')
-blocklist_content = [line.rstrip() for line in blocklist.readlines()]
-if email.split('@')[1] in blocklist_content:
+with open('disposable_email_blocklist.conf') as blocklist:
+    blocklist_content = {line.rstrip() for line in blocklist.readlines()}
+if email.partition('@')[2] in blocklist_content:
     message = "Please enter your permanent email address."
     return (False, message)
 else:
@@ -44,7 +44,29 @@ function isDisposableEmail($email, $blocklist_path = null) {
 }
 ```
 
-Alternatively you can use the `elliotjreed/disposable-emails-filter` Composer package: https://packagist.org/packages/elliotjreed/disposable-emails-filter / https://github.com/elliotjreed/disposable-emails-filter-php (automatically updated daily).
+Alternatively check out Composer package https://github.com/elliotjreed/disposable-emails-filter-php.
+
+**Go** contributed by [@pjebs](https://github.com/pjebs)
+
+```go
+import ("bufio"; "os"; "strings";)
+var disposableList = make(map[string]struct{}, 3500)
+func init() {
+	f, _ := os.Open("disposable_email_blocklist.conf")
+	for scanner := bufio.NewScanner(f); scanner.Scan(); {
+		disposableList[scanner.Text()] = struct{}{}
+	}
+	f.Close()
+}
+
+func isDisposableEmail(email string) (disposable bool) {
+	segs := strings.Split(email, "@")
+	_, disposable = disposableList[strings.ToLower(segs[len(segs)-1])]
+	return
+}
+```
+
+Alternatively check out Go package https://github.com/rocketlaunchr/anti-disposable-email.
 
 **Ruby on Rails** contributed by [@MitsunChieh](https://github.com/MitsunChieh)
 
