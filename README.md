@@ -43,6 +43,30 @@ function isDisposableEmail($email, $blocklist_path = null) {
     return in_array($domain, $disposable_domains);
 }
 ```
+
+**Go** contributed by [@pjebs](https://github.com/pjebs)
+
+```go
+import ("bufio"; "os"; "strings";)
+var disposableList = make(map[string]struct{}, 3500)
+func init() {
+	f, _ := os.Open("disposable_email_blocklist.conf")
+	for scanner := bufio.NewScanner(f); scanner.Scan(); {
+		disposableList[scanner.Text()] = struct{}{}
+	}
+	f.Close()
+}
+
+func isDisposableEmail(email string) (disposable bool) {
+	segs := strings.Split(email, "@")
+	_, disposable = disposableList[strings.ToLower(segs[len(segs)-1])]
+	return
+}
+```
+
+Alternatively, [anti-disposable-email](https://github.com/rocketlaunchr/anti-disposable-email) which auto-updates based on this repo.
+
+
 **Ruby on Rails** contributed by [@MitsunChieh](https://github.com/MitsunChieh)
 
 In the resource model, usually it is `user.rb`:
