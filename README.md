@@ -11,6 +11,27 @@ Allowlist
 =========
 The file [allowlist.conf](allowlist.conf) gathers email domains that are often identified as disposable but in fact are not.
 
+Contributing
+============
+Feel free to create PR with additions or request removal of some domain (with reasons).
+
+Specifically, if adding more than one new domain, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.
+
+Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
+
+Changelog
+============
+
+* 2/11/21 We created a github [org account](https://github.com/disposable-email-domains) and transferred the repository to it.
+
+* 4/18/19 [@di](https://github.com/di) [joined](https://github.com/martenson/disposable-email-domains/issues/205) as a core maintainer of this project. Thank you!
+
+* 7/31/17 [@deguif](https://github.com/deguif) [joined](https://github.com/martenson/disposable-email-domains/issues/106) as a core maintainer of this project. Thanks!
+
+* 12/6/16 - Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
+
+* 7/27/16 - Converted all domains to the second level. This means that starting from [this commit](https://github.com/martenson/disposable-email-domains/commit/61ae67aacdab0b19098de2e13069d7c35b74017a) the implementers should take care of matching the second level domain names properly i.e. `@xxx.yyy.zzz` should match `yyy.zzz` in blocklist more info in [#46](https://github.com/martenson/disposable-email-domains/issues/46)
+
 Example Usage
 =============
 **Python**
@@ -135,24 +156,3 @@ var addr = new MailAddress(email);
 if (IsBlocklisted(addr.Host)))
   throw new ApplicationException("Email is blocklisted.");
 ```
-
-Contributing
-============
-Feel free to create PR with additions or request removal of some domain (with reasons).
-
-Specifically, if adding more than one new domain, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.
-
-Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
-
-Changelog
-============
-
-* 2/11/21 We created a github [org account](https://github.com/disposable-email-domains) and transferred the repository to it.
-
-* 4/18/19 [@di](https://github.com/di) [joined](https://github.com/martenson/disposable-email-domains/issues/205) as a core maintainer of this project. Thank you!
-
-* 7/31/17 [@deguif](https://github.com/deguif) [joined](https://github.com/martenson/disposable-email-domains/issues/106) as a core maintainer of this project. Thanks!
-
-* 12/6/16 - Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
-
-* 7/27/16 - Converted all domains to the second level. This means that starting from [this commit](https://github.com/martenson/disposable-email-domains/commit/61ae67aacdab0b19098de2e13069d7c35b74017a) the implementers should take care of matching the second level domain names properly i.e. `@xxx.yyy.zzz` should match `yyy.zzz` in blocklist more info in [#46](https://github.com/martenson/disposable-email-domains/issues/46)
