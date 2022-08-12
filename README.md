@@ -34,7 +34,10 @@ Changelog
 
 Example Usage
 =============
-**Python**
+
+TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails), [NodeJS](#nodejs), [C#](#c)
+
+### Python
 ```Python
 with open('disposable_email_blocklist.conf') as blocklist:
     blocklist_content = {line.rstrip() for line in blocklist.readlines()}
@@ -52,7 +55,8 @@ Available as [PyPI module](https://pypi.org/project/disposable-email-domains) th
 True
 ```
 
-**PHP** contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.com/deguif), [@pjebs](https://github.com/pjebs) and [@Wruczek](https://github.com/Wruczek)
+### PHP
+contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.com/deguif), [@pjebs](https://github.com/pjebs) and [@Wruczek](https://github.com/Wruczek)
 
 1. Make sure the passed email is valid. You can check that with [filter_var](https://secure.php.net/manual/en/function.filter-var.php)
 2. Make sure you have the mbstring extension installed on your server
@@ -67,7 +71,8 @@ function isDisposableEmail($email, $blocklist_path = null) {
 
 Alternatively check out Composer package https://github.com/elliotjreed/disposable-emails-filter-php.
 
-**Go** contributed by [@pjebs](https://github.com/pjebs)
+### Go
+contributed by [@pjebs](https://github.com/pjebs)
 
 ```go
 import ("bufio"; "os"; "strings";)
@@ -89,7 +94,8 @@ func isDisposableEmail(email string) (disposable bool) {
 
 Alternatively check out Go package https://github.com/rocketlaunchr/anti-disposable-email.
 
-**Ruby on Rails** contributed by [@MitsunChieh](https://github.com/MitsunChieh)
+### Ruby on Rails
+contributed by [@MitsunChieh](https://github.com/MitsunChieh)
 
 In the resource model, usually it is `user.rb`:
 
@@ -110,7 +116,8 @@ end
 
 Alternatively you can use the `disposable_mail` gem: https://github.com/oesgalha/disposable_mail.
 
-**NodeJs** contributed by [@martin-fogelman](https://github.com/martin-fogelman)
+### NodeJs
+contributed by [@martin-fogelman](https://github.com/martin-fogelman)
 
 ```Node
 'use strict';
@@ -139,7 +146,7 @@ rl.on('close', () => {
 });
 ```
 
-**C#**
+### C#
 ```C#
 private static readonly Lazy<HashSet<string>> _emailBlockList = new Lazy<HashSet<string>>(() =>
 {
