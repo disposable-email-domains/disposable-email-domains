@@ -44,6 +44,8 @@ function isDisposableEmail($email, $blocklist_path = null) {
 }
 ```
 
+Alternatively check out Composer package https://github.com/elliotjreed/disposable-emails-filter-php.
+
 **Go** contributed by [@pjebs](https://github.com/pjebs)
 
 ```go
@@ -64,8 +66,7 @@ func isDisposableEmail(email string) (disposable bool) {
 }
 ```
 
-Alternatively, [anti-disposable-email](https://github.com/rocketlaunchr/anti-disposable-email) which auto-updates based on this repo.
-
+Alternatively check out Go package https://github.com/rocketlaunchr/anti-disposable-email.
 
 **Ruby on Rails** contributed by [@MitsunChieh](https://github.com/MitsunChieh)
 
