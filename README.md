@@ -15,7 +15,7 @@ Contributing
 ============
 Feel free to create PR with additions or request removal of some domain (with reasons).
 
-Specifically, if adding more than one new domain, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.
+**Specifically, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.**
 
 Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
 
