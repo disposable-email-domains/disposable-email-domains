@@ -163,3 +163,26 @@ var addr = new MailAddress(email);
 if (IsBlocklisted(addr.Host)))
   throw new ApplicationException("Email is blocklisted.");
 ```
+
+### Bash
+
+```
+#!/bin/bash
+
+# This script checks if an email address is temporary.
+
+# Read blocklist file into a bash array
+mapfile -t blocklist < disposable_email_blocklist.conf
+
+# Check if email domain is in blocklist
+if [[ " ${blocklist[@]} " =~ " ${email#*@} " ]]; then
+    message="Please enter your permanent email address."
+    return_value=false
+else
+    return_value=true
+fi
+
+# Return result
+echo "$return_value"
+```
+
