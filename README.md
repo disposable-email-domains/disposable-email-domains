@@ -116,23 +116,6 @@ end
 
 Alternatively you can use the `disposable_mail` gem: https://github.com/oesgalha/disposable_mail.
 
-### Deno
-contributed by [@boywithkeyboard](https://github.com/boywithkeyboard)
-
-```js
-let blocklist
-
-async function isDisposable(email) {
-  if (!blocklist) {
-    const content = await Deno.readTextFile('disposable_email_blocklist.conf')
-
-    blocklist = content.split('\r\n').slice(0, -1)
-  }
-
-  return blocklist.includes(email.split('@')[1])
-}
-```
-
 ### Node.js
 contributed by [@boywithkeyboard](https://github.com/boywithkeyboard)
 
