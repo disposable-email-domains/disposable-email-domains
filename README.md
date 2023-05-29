@@ -135,6 +135,8 @@ async function isDisposable(email) {
 }
 ```
 
+Alternatively you can use the [is-disposable library](https://github.com/boywithkeyboard/is-disposable).
+
 ### C#
 ```C#
 private static readonly Lazy<HashSet<string>> _emailBlockList = new Lazy<HashSet<string>>(() =>
