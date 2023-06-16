@@ -116,35 +116,26 @@ end
 
 Alternatively you can use the `disposable_mail` gem: https://github.com/oesgalha/disposable_mail.
 
-### NodeJs
-contributed by [@martin-fogelman](https://github.com/martin-fogelman)
+### Node.js
+contributed by [@boywithkeyboard](https://github.com/boywithkeyboard)
 
-```Node
-'use strict';
+```js
+import { readFile } from 'node:fs/promises'
 
-const readline = require('readline'),
-  fs = require('fs');
+let blocklist
 
-const input = fs.createReadStream('./disposable_email_blocklist.conf'),
-  output = [],
-  rl = readline.createInterface({input});
+async function isDisposable(email) {
+  if (!blocklist) {
+    const content = await readFile('disposable_email_blocklist.conf', { encoding: 'utf-8' })
 
-// PROCESS LINES
-rl.on('line', (line) => {
-  console.log(`Processing line ${output.length}`);
-  output.push(line);
-});
-
-// SAVE AS JSON
-rl.on('close', () => {
-  try {
-    const json = JSON.stringify(output);
-    fs.writeFile('disposable_email_blocklist.json', json, () => console.log('--- FINISHED ---'));
-  } catch (e) {
-    console.log(e);
+    blocklist = content.split('\r\n').slice(0, -1)
   }
-});
+
+  return blocklist.includes(email.split('@')[1])
+}
 ```
+
+Alternatively you can use the [is-disposable library](https://github.com/boywithkeyboard/is-disposable).
 
 ### C#
 ```C#
