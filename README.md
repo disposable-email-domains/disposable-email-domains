@@ -197,7 +197,7 @@ static {
             domains.add(line);
         }
     } catch (IOException ex) {
-        LOG.error("Faild to load list of disposable email domains.", ex);
+        LOG.error("Failed to load list of disposable email domains.", ex);
     }
     DISPOSABLE_EMAIL_DOMAINS = domains;
 }
