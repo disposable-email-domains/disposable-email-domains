@@ -175,3 +175,42 @@ fi
 echo "$return_value"
 ```
 
+### Java
+
+Code assumes that you have added `disposable_email_blocklist.conf` next to your class as classpath resource.
+
+```Java
+private static final Set<String> DISPOSABLE_EMAIL_DOMAINS;
+
+static {
+    Set<String> domains = new HashSet<>();
+    try (BufferedReader in = new BufferedReader(
+            new InputStreamReader(
+                EMailChecker.class.getResourceAsStream("disposable_email_blocklist.conf"), StandardCharsets.UTF_8))) {
+        String line;
+        while ((line = in.readLine()) != null) {
+            line = line.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            
+            domains.add(line);
+        }
+    } catch (IOException ex) {
+        LOG.error("Failed to load list of disposable email domains.", ex);
+    }
+    DISPOSABLE_EMAIL_DOMAINS = domains;
+}
+
+public static boolean isDisposable(String email) throws AddressException {
+    InternetAddress contact = new InternetAddress(email);
+    return isDisposable(contact);
+}
+
+public static boolean isDisposable(InternetAddress contact) throws AddressException {
+    String address = contact.getAddress();
+    int domainSep = address.indexOf('@');
+    String domain = (domainSep >= 0) ? address.substring(domainSep + 1) : address;
+    return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
+}
+```
