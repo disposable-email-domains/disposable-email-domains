@@ -35,7 +35,7 @@ Changelog
 Example Usage
 =============
 
-TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails), [NodeJS](#nodejs), [C#](#c)
+TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails), [NodeJS](#nodejs), [C#](#c), [Java](#java)
 
 ### Python
 ```Python
