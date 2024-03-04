@@ -28,3 +28,22 @@ jobs:
         cache: 'npm'
     - run: npm ci
     - run: node fetch_email.js
+    - name: Run maintain.sh
+      run: |
+        chmod +x ./maintain.sh
+        ./maintain.sh
+    - name: Commit and push if changed
+      run: |
+        git config --global user.email "actions@github.com"
+        git config --global user.name "GitHub Action"
+        epoch_time=$(date +%s)
+        git checkout -b ghactions-$epoch_time
+        git add .
+        git commit -m "Automated changes" || exit 0
+        git push origin ghactions-$epoch_time
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v3
+      with:
+        title: Automated changes
+        body: This is an auto-generated PR with changes made by the GitHub Action.
+        branch: ghactions-${{ steps.build.outputs.epoch_time }}
