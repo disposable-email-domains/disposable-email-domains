@@ -1,0 +1,14 @@
+{
+  "name": "disposable-email-domains",
+  "version": "1.0.0",
+  "description": "List of disposable email domains ========================",
+  "main": "fetch_email.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "puppeteer": "^22.3.0"
+  }
+}
