@@ -128,10 +128,21 @@ async function isDisposable(email) {
   if (!blocklist) {
     const content = await readFile('disposable_email_blocklist.conf', { encoding: 'utf-8' })
 
-    blocklist = content.split('\r\n').slice(0, -1)
+    blocklist = content.split('\r\n').slice(0, -1) // Change to `'\n'` depending on your system
   }
 
-  return blocklist.includes(email.split('@')[1])
+  const domains = Array.from((email.split('@')[1] || '').matchAll(/(?=(?:\.|^)(.*))/g))
+    .map(match => match[1])
+    .slice(0, -1);
+
+  // Or, longer but easier to read for people unfamiliar with regex:
+  // const domains = (email.split('@')[1] || '')
+  //   .split('.')
+  //   .reverse()
+  //   .reduce((acc, cur) => [...acc, `${cur}${acc.length ? `.${acc[acc.length - 1]}` : ''}`], []) // use `reduce<string[]>` with TypeScript
+  //   .slice(1);
+
+  return domains.map(domain => blocklist.includes(domain || '')).some(Boolean);
 }
 ```
 
