@@ -114,8 +114,6 @@ def reject_email_blocklist
 end
 ```
 
-Alternatively you can use the `disposable_mail` gem: https://github.com/oesgalha/disposable_mail.
-
 ### Node.js
 contributed by [@boywithkeyboard](https://github.com/boywithkeyboard)
 
