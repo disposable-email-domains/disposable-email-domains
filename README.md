@@ -237,14 +237,4 @@ func checkBlockList(email: String, completion: @escaping (Bool) -> Void) {
     }
     task.resume()
 }
-
-...
-
-checkBlockList(email: newValue) { isBlocked in
-    if isBlocked {
-        // Handle Blocked Event
-    } else {
-        // Handle Passed Event
-    }
-}
 ```
