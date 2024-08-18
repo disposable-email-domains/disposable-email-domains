@@ -133,6 +133,8 @@ async function isDisposable(email) {
 }
 ```
 
+Alternatively check out NPM package https://github.com/mziyut/disposable-email-domains-js.
+
 ### C#
 ```C#
 private static readonly Lazy<HashSet<string>> _emailBlockList = new Lazy<HashSet<string>>(() =>
