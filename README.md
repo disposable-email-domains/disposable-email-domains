@@ -35,7 +35,7 @@ Changelog
 Example Usage
 =============
 
-TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java)
+TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Swift](#swift)
 
 ### Python
 ```Python
@@ -212,5 +212,29 @@ public static boolean isDisposable(InternetAddress contact) throws AddressExcept
     int domainSep = address.indexOf('@');
     String domain = (domainSep >= 0) ? address.substring(domainSep + 1) : address;
     return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
+}
+```
+
+### Swift
+contributed by [@1998code](https://github.com/1998code)
+
+```swift
+func checkBlockList(email: String, completion: @escaping (Bool) -> Void) {
+    let url = URL(string: "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/master/disposable_email_blocklist.conf")!
+    let task = URLSession.shared.dataTask(with: url) { data, response, error in
+        if let data = data {
+            if let string = String(data: data, encoding: .utf8) {
+                let lines = string.components(separatedBy: "\n")
+                for line in lines {
+                    if email.contains(line) {
+                        completion(true)
+                        return
+                    }
+                }
+            }
+        }
+        completion(false)
+    }
+    task.resume()
 }
 ```
