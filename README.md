@@ -1,8 +1,5 @@
 List of disposable email domains
 ========================
-
-[![Licensed under CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/)
-
 This repo contains a [list of disposable and temporary email address domains](disposable_email_blocklist.conf) often used to register dummy users in order to spam or abuse some services.
 
 We cannot guarantee all of these can still be considered disposable but we do basic checking so chances are they were disposable at one point in time.
@@ -18,6 +15,12 @@ Feel free to create PR with additions or request removal of some domain (with re
 **Specifically, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.**
 
 Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
+
+License
+=======
+You can copy, modify, distribute and use the work, even for commercial purposes, all without asking permission.
+
+[![Licensed under CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/) 
 
 Changelog
 ============
