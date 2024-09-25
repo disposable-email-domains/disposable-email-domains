@@ -138,7 +138,10 @@ async function isDisposable(email) {
 }
 ```
 
-Alternatively check out NPM package https://github.com/mziyut/disposable-email-domains-js.
+Alternatively check out npm packages that use the list: 
+
+- [disposable-email-domains-js](https://github.com/mziyut/disposable-email-domains-js): Check email addresses and domains against the disposable-email-domains list.
+- [resolve-email](https://github.com/bcomnes/resolve-email): Check email addresses agains the disposable-email-domains domains list and check DNS resolution.
 
 ### C#
 ```C#
