@@ -33,7 +33,7 @@ Changelog
 
 * 12/6/16 - Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
 
-* 7/27/16 - Converted all domains to the second level. This means that starting from [this commit](https://github.com/martenson/disposable-email-domains/commit/61ae67aacdab0b19098de2e13069d7c35b74017a) the implementers should take care of matching the second level domain names properly i.e. `@xxx.yyy.zzz` should match `yyy.zzz` in blocklist more info in [#46](https://github.com/martenson/disposable-email-domains/issues/46)
+* 7/27/16 - Converted all domains to the second level. This means that starting from [this commit](https://github.com/martenson/disposable-email-domains/commit/61ae67aacdab0b19098de2e13069d7c35b74017a) the implementers should take care of matching the second level domain names properly i.e. `@xxx.yyy.zzz` should match `yyy.zzz` in blocklist where `zzz` is a [public suffix](https://publicsuffix.org/). More info in [#46](https://github.com/martenson/disposable-email-domains/issues/46)
 
 * 9/2/14 - First commit [393c21f5](https://github.com/disposable-email-domains/disposable-email-domains/commit/393c21f56b5186f8db7d197b11cf1d7c5490a6f9)
   
