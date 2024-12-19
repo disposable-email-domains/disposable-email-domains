@@ -11,6 +11,6 @@ assignees: ''
 
 Specifically, please tell us where one can generate a disposable email address which uses that domain, so the maintainers can verify it.
 
-**Can you create a PR yourself instead of an issue.**
+**Can you create a PR yourself instead of an issue?**
 
-This will improve your chances of fast merging and it really ain't hard. See details in the [readme](https://github.com/disposable-email-domains/disposable-email-domains?tab=readme-ov-file#contributing).
+Please consider taking the next step. This will improve your chances of fast merging and it really ain't hard. See details in the [readme](https://github.com/disposable-email-domains/disposable-email-domains?tab=readme-ov-file#contributing).
