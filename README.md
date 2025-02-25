@@ -29,6 +29,8 @@ You can copy, modify, distribute and use the work, even for commercial purposes,
 Changelog
 ============
 
+* 1/9/25 Enabled [GitHub sponsorhip](https://github.com/sponsors/disposable-email-domains) for this work. Everybody can do it, but currently only one person does it. Send them $2 for a coffee if you care.
+
 * 2/11/21 We created a github [org account](https://github.com/disposable-email-domains) and transferred the repository to it.
 
 * 4/18/19 [@di](https://github.com/di) [joined](https://github.com/martenson/disposable-email-domains/issues/205) as a core maintainer of this project. Thank you!
