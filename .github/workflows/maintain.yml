@@ -31,7 +31,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Maintain
         run: |
-            python maintain.sh
+            python verify.py
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
