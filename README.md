@@ -250,7 +250,12 @@ private val DISPOSABLE_EMAIL_DOMAINS = run {
 }
 
 fun isDisposable(email: String): Boolean {
-	return DISPOSABLE_EMAIL_DOMAINS.contains(email.substringAfter("@"))
+	val domain = email
+		.substringAfter("@")
+		.split('.')
+		.takeLast(2)
+		.joinToString(".")
+	return DISPOSABLE_EMAIL_DOMAINS.contains(domain)
 }
 ```
 
