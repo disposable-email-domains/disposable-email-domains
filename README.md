@@ -227,6 +227,7 @@ public static boolean isDisposable(InternetAddress contact) throws AddressExcept
 ```
 
 ### Kotlin
+contributed by [@nillpoe](https://github.com/nillpoe)
 
 ```kotlin
 private val LIST_URL = "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/refs/heads/main/disposable_email_blocklist.conf"
