@@ -226,6 +226,33 @@ public static boolean isDisposable(InternetAddress contact) throws AddressExcept
 }
 ```
 
+### Kotlin
+
+```kotlin
+private val LIST_URL = "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/refs/heads/main/disposable_email_blocklist.conf"
+private val DISPOSABLE_EMAIL_DOMAINS = run {
+	val result = mutableSetOf<String>()
+	
+	try {
+	    BufferedReader(InputStreamReader(
+			URI(LIST_URL).toURL().openStream()
+	    )).use { reader ->
+			generateSequence(reader.readLine()) {
+			    reader.readLine()
+			}.forEach(result::add)
+	    }
+	} catch (ex: IOException) {
+	    LOG.error("Failed to load list of disposable email domains.", ex)
+	}
+	
+	result.toHashSet()
+}
+
+fun isDisposable(email: String): Boolean {
+	return DISPOSABLE_EMAIL_DOMAINS.contains(email.substringAfter("@"))
+}
+```
+
 ### Swift
 contributed by [@1998code](https://github.com/1998code)
 
