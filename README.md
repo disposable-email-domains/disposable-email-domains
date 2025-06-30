@@ -230,32 +230,85 @@ public static boolean isDisposable(InternetAddress contact) throws AddressExcept
 contributed by [@nillpoe](https://github.com/nillpoe)
 
 ```kotlin
-private val LIST_URL = "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/refs/heads/main/disposable_email_blocklist.conf"
-private val DISPOSABLE_EMAIL_DOMAINS = run {
-	val result = mutableSetOf<String>()
-	
-	try {
-	    BufferedReader(InputStreamReader(
-			URI(LIST_URL).toURL().openStream()
-	    )).use { reader ->
-			generateSequence(reader.readLine()) {
-			    reader.readLine()
-			}.forEach(result::add)
-	    }
-	} catch (ex: IOException) {
-	    LOG.error("Failed to load list of disposable email domains.", ex)
-	}
-	
-	result.toHashSet()
+companion object {
+    private const val PSL_LIST_URL = "https://publicsuffix.org/list/public_suffix_list.dat"
+    private const val DISPOSABLE_LIST_URL = "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/refs/heads/main/disposable_email_blocklist.conf"
+}
+
+private val publicSuffixes = mutableSetOf<String>()
+private val wildcardSuffixes = mutableSetOf<String>()
+private val exceptions = mutableSetOf<String>()
+
+private val disposableEmailDomains = loadDisposableDomains()
+
+init {
+    try {
+        BufferedReader(InputStreamReader(URI(PSL_LIST_URL).toURL().openStream())).use { reader ->
+            reader.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("//") }
+                .forEach {
+                    when {
+                        it.startsWith("!") -> exceptions.add(it.removePrefix("!"))
+                        it.startsWith("*.") -> wildcardSuffixes.add(it.removePrefix("*."))
+                        else -> publicSuffixes.add(it)
+                    }
+                }
+        }
+    } catch (e: Exception) {
+        println("Failed to load PSL: ${e.message}")
+    }
+}
+
+private fun loadDisposableDomains(): Set<String> {
+    val result = mutableSetOf<String>()
+    try {
+        BufferedReader(InputStreamReader(URI(DISPOSABLE_LIST_URL).toURL().openStream())).use { reader ->
+            reader.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .forEach(result::add)
+        }
+    } catch (e: Exception) {
+        println("Failed to load disposable list: ${e.message}")
+    }
+    return result
+}
+
+fun getRegistrableDomain(domain: String): String? {
+    val parts = domain.lowercase().split(".")
+    for (i in 0 until parts.size) {
+        val candidate = parts.subList(i, parts.size).joinToString(".")
+
+        if (exceptions.contains(candidate)) {
+            if (i > 0) {
+                return parts.subList(i - 1, parts.size).joinToString(".")
+            }
+            return null
+        }
+
+        if (publicSuffixes.contains(candidate)) {
+            if (i > 0) {
+                return parts.subList(i - 1, parts.size).joinToString(".")
+            }
+            return null
+        }
+
+        if (wildcardSuffixes.contains(parts.subList(i + 1, parts.size).joinToString("."))) {
+            if (i > 0) {
+                return parts.subList(i - 1, parts.size).joinToString(".")
+            }
+            return null
+        }
+    }
+
+    return if (parts.size >= 2) parts.takeLast(2).joinToString(".") else null
 }
 
 fun isDisposable(email: String): Boolean {
-	val domain = email
-		.substringAfter("@")
-		.split('.')
-		.takeLast(2)
-		.joinToString(".")
-	return DISPOSABLE_EMAIL_DOMAINS.contains(domain)
+    val domain = email.substringAfter("@")
+    val registrable = getRegistrableDomain(domain)
+    return registrable != null && disposableEmailDomains.contains(registrable)
 }
 ```
 
