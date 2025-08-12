@@ -249,3 +249,6 @@ func checkBlockList(email: String, completion: @escaping (Bool) -> Void) {
     task.resume()
 }
 ```
+
+
+
