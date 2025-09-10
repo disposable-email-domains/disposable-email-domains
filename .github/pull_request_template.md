@@ -1,1 +1,1 @@
-If you are adding domains please state where one can generate a disposable email address which uses the added domains, so the maintainers can verify it. Without this information your PR will be closed.
+To add domains please explain where one can generate a disposable email address which uses them, e.g. in the form of screenshots. Without this information your PR will be closed.

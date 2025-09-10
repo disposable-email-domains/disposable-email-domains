@@ -1,8 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Unify locale settings temporarily to make sort produce the same order
-LC_ALL=C
-export LC_ALL
+export LC_ALL=C
 
 # Converts uppercase to lowercase, sorts, removes duplicates and removes allowlisted domains
 cat disposable_email_blocklist.conf | tr '[:upper:]' '[:lower:]' | sort -f | uniq -i  > temp.conf
