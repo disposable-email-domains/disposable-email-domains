@@ -52,11 +52,13 @@ TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails),
 ```Python
 with open('disposable_email_blocklist.conf') as blocklist:
     blocklist_content = {line.rstrip() for line in blocklist.readlines()}
-if email.partition('@')[2] in blocklist_content:
-    message = "Please enter your permanent email address."
-    return (False, message)
-else:
-    return True
+
+domain_parts = email.partition('@')[2].split(".")
+for i in range(len(domain_parts) - 1):
+    if ".".join(domain_parts[i:]) in blocklist_content:
+        message = "Please enter your permanent email address."
+        return (False, message)
+return True
 ```
 
 Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
