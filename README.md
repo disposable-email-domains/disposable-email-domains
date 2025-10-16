@@ -58,7 +58,6 @@ for i in range(len(domain_parts) - 1):
     if ".".join(domain_parts[i:]) in blocklist_content:
         message = "Please enter your permanent email address."
         return (False, message)
-        
 return True
 ```
 
