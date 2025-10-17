@@ -99,9 +99,13 @@ func init() {
 }
 
 func isDisposableEmail(email string) (disposable bool) {
-	segs := strings.Split(email, "@")
-	_, disposable = disposableList[strings.ToLower(segs[len(segs)-1])]
-	return
+	domain_parts := strings.Split(strings.Split(email, "@")[1], ".")
+	for i := 0; i < len(domain_parts)-1; i++ {
+		if _, ok := disposableList[strings.Join(domain_parts[i:], ".")]; ok {
+			return true
+		}
+	}
+	return false
 }
 ```
 
