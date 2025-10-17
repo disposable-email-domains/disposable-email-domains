@@ -107,23 +107,19 @@ func isDisposableEmail(email string) (disposable bool) {
 
 Alternatively check out Go package https://github.com/rocketlaunchr/anti-disposable-email.
 
-### Ruby on Rails
-contributed by [@MitsunChieh](https://github.com/MitsunChieh)
-
-In the resource model, usually it is `user.rb`:
-
+### Ruby
 ```Ruby
-before_validation :reject_email_blocklist
+BLOCKLIST_CONTENT = File.readlines('disposable_email_blocklist.conf', chomp: true).to_set.freeze
 
-def reject_email_blocklist
-  blocklist = File.read('config/disposable_email_blocklist.conf').split("\n")
+def disposable_email?(email)
+  domain_parts = email.split('@')[1].split('.')
 
-  if blocklist.include?(email.split('@')[1])
-    errors[:email] << 'invalid email'
-    return false
-  else
-    return true
+  (0...domain_parts.length - 1).each do |i|
+    if BLOCKLIST_CONTENT.include?(domain_parts[i..-1].join('.'))
+      return false
+    end
   end
+  true
 end
 ```
 
