@@ -128,21 +128,26 @@ end
 ```
 
 ### Node.js
-contributed by [@boywithkeyboard](https://github.com/boywithkeyboard)
-
 ```js
-import { readFile } from 'node:fs/promises'
+const { readFileSync } = require("fs");
 
-let blocklist
+const blocklistContent = new Set(
+  readFileSync("disposable_email_blocklist.conf", "utf-8")
+    .split("\r\n")
+    .map((line) => line.trim())
+    .slice(0, -1)
+);
 
-async function isDisposable(email) {
-  if (!blocklist) {
-    const content = await readFile('disposable_email_blocklist.conf', { encoding: 'utf-8' })
-
-    blocklist = content.split('\r\n').slice(0, -1)
+function isPermanentEmail(email) {
+  const domainParts = email.split("@")[1].split(".");
+  for (let i = 0; i < domainParts.length - 1; i++) {
+    if (blocklistContent.has(domainParts.slice(i).join("."))) {
+      const message = "Please enter your permanent email address.";
+      return [false, message];
+    }
   }
 
-  return blocklist.includes(email.split('@')[1])
+  return [true];
 }
 ```
 
