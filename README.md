@@ -181,16 +181,27 @@ if (IsBlocklisted(addr.Host)))
 # Read blocklist file into a bash array
 mapfile -t blocklist < disposable_email_blocklist.conf
 
-# Check if email domain is in blocklist
-if [[ " ${blocklist[@]} " =~ " ${email#*@} " ]]; then
-    message="Please enter your permanent email address."
-    return_value=false
-else
-    return_value=true
-fi
+email="$1"
+domain_part="${email#*@}"
 
-# Return result
-echo "$return_value"
+declare -A blocked_domains
+for d in "${blocklist[@]}"; do
+  blocked_domains["$d"]=1
+done
+    
+# Loop until we're on the last domain level
+while [[ "$domain_part" == *.* ]]; do
+  if [[ -n "${blocked_domains[$domain_part]:-}" ]]; then
+    echo "false:Please enter your permanent email address."
+    exit 1
+  fi
+
+  # Drop the left-most subdomain and try again (sub.mail.com -> mail.com)
+  domain_part="${domain_part#*.}"
+done
+
+echo "true:"
+exit 0
 ```
 
 ### Java
