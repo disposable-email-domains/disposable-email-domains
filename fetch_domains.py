@@ -105,11 +105,11 @@ def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: 
     for domain in sorted(missing):
         print(f"  + {domain}")
     
-    # Append missing domains at the end of the file
-    with open(filename, 'a') as f:
-        for domain in sorted(missing):
-            if domain:  # Skip empty strings
-                f.write(f"{domain}\n")
+    # Merge with existing and write back sorted alphabetically (case-insensitive)
+    merged = existing | set(d for d in missing if d)
+    with open(filename, 'w') as f:
+        for domain in sorted(merged, key=lambda s: s.lower()):
+            f.write(f"{domain}\n")
     
     return len(missing)
 
