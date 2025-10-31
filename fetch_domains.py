@@ -90,7 +90,7 @@ def load_existing_domains(filename: str) -> Set[str]:
 
 
 def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: str = "") -> int:
-    """Add new domains to the blocklist file (appends at the end)"""
+    """Add new domains to the blocklist file"""
     existing = load_existing_domains(filename)
     missing = new_domains - existing
     
