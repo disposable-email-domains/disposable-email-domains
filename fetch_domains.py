@@ -8,6 +8,7 @@ from typing import Set
 
 from bs4 import BeautifulSoup
 from requests import get
+from publicsuffixlist import PublicSuffixList
 
 
 def extract_domains_from_text(text: str) -> Set[str]:
@@ -124,6 +125,15 @@ FETCHERS = [
 def main():
     """Main function to run all registered domain fetchers"""
     blocklist_file = "disposable_email_blocklist.conf"
+    psl = None
+    # Load the public suffix list once, to filter out subdomains
+    try:
+        resp = get("https://publicsuffix.org/list/public_suffix_list.dat", timeout=30)
+        resp.raise_for_status()
+        psl = PublicSuffixList(resp.text.splitlines())
+    except Exception as e:
+        print(f"Error loading Public Suffix List: {e}", file=sys.stderr)
+        sys.exit(1)
     
     total_added = 0
     sources_processed = 0
@@ -131,7 +141,20 @@ def main():
     for fetcher in FETCHERS:
         print(f"\n=== Fetching domains from {fetcher.get_name()} ===")
         try:
-            domains = fetcher.fetch()
+            raw_domains = fetcher.fetch()
+            # Keep only second-level domains (no third-or-lower level subdomains)
+            filtered_domains: Set[str] = set()
+            for d in raw_domains:
+                dd = d.strip().lower()
+                if not dd:
+                    continue
+                privateparts = psl.privateparts(dd)
+                # Include only domains that are not subdomains (exactly one private part)
+                if privateparts is not None and len(privateparts) == 1:
+                    # Also exclude pure public suffixes
+                    if psl.publicsuffix(dd) != dd:
+                        filtered_domains.add(dd)
+            domains = filtered_domains
             print(f"Found {len(domains)} domains from {fetcher.get_name()}")
             
             if domains:
