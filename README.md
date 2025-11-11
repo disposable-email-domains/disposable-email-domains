@@ -173,7 +173,7 @@ if (IsBlocklisted(addr.Host)))
 
 ### Bash
 
-```
+```sh
 #!/bin/bash
 
 # This script checks if an email address is temporary.
