@@ -79,6 +79,40 @@ class YopmailFetcher(DomainFetcher):
         return domains
 
 
+class TmailFetcher(DomainFetcher):
+    """Fetcher for Tmail disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Tmail")
+        self.url = "https://tmail.gg/api/domains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from Tmail endpoint"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        # Parse JSON
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if "data" in data and "domains" in data["data"]:
+            for domain in data["data"]["domains"]:
+                domains.add(domain.lower())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -117,6 +151,7 @@ def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: 
 # Registry of all domain fetchers
 FETCHERS = [
     YopmailFetcher(),
+    TmailFetcher(),
     # Add more fetchers here in the future
     # Example: AnotherFetcher(),
 ]
