@@ -84,7 +84,7 @@ class TmailFetcher(DomainFetcher):
 
     def __init__(self):
         super().__init__("Tmail")
-        self.url = "https://tmail.gg/api/domains"
+        self.url = "http://45.207.211.187:1234/api/domains"
 
     def fetch(self) -> Set[str]:
         """Fetch domains from Tmail endpoint"""
