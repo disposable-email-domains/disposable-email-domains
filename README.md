@@ -18,7 +18,7 @@ Feel free to create PR with additions or request removal of some domain (with re
 
 **Specifically, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.**
 
-Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
+Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @, unless they use public suffix, in which case include the 3rd level domain), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
 
 License
 =======
@@ -52,11 +52,13 @@ TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails),
 ```Python
 with open('disposable_email_blocklist.conf') as blocklist:
     blocklist_content = {line.rstrip() for line in blocklist.readlines()}
-if email.partition('@')[2] in blocklist_content:
-    message = "Please enter your permanent email address."
-    return (False, message)
-else:
-    return True
+
+domain_parts = email.partition('@')[2].split(".")
+for i in range(len(domain_parts) - 1):
+    if ".".join(domain_parts[i:]) in blocklist_content:
+        message = "Please enter your permanent email address."
+        return (False, message)
+return True
 ```
 
 Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
@@ -97,50 +99,55 @@ func init() {
 }
 
 func isDisposableEmail(email string) (disposable bool) {
-	segs := strings.Split(email, "@")
-	_, disposable = disposableList[strings.ToLower(segs[len(segs)-1])]
-	return
+	domain_parts := strings.Split(strings.Split(email, "@")[1], ".")
+	for i := 0; i < len(domain_parts)-1; i++ {
+		if _, ok := disposableList[strings.Join(domain_parts[i:], ".")]; ok {
+			return true
+		}
+	}
+	return false
 }
 ```
 
 Alternatively check out Go package https://github.com/rocketlaunchr/anti-disposable-email.
 
-### Ruby on Rails
-contributed by [@MitsunChieh](https://github.com/MitsunChieh)
-
-In the resource model, usually it is `user.rb`:
-
+### Ruby
 ```Ruby
-before_validation :reject_email_blocklist
+BLOCKLIST_CONTENT = File.readlines('disposable_email_blocklist.conf', chomp: true).to_set.freeze
 
-def reject_email_blocklist
-  blocklist = File.read('config/disposable_email_blocklist.conf').split("\n")
+def disposable_email?(email)
+  domain_parts = email.split('@')[1].split('.')
 
-  if blocklist.include?(email.split('@')[1])
-    errors[:email] << 'invalid email'
-    return false
-  else
-    return true
+  (0...domain_parts.length - 1).each do |i|
+    if BLOCKLIST_CONTENT.include?(domain_parts[i..-1].join('.'))
+      return false
+    end
   end
+  true
 end
 ```
 
 ### Node.js
-contributed by [@boywithkeyboard](https://github.com/boywithkeyboard)
-
 ```js
-import { readFile } from 'node:fs/promises'
+const { readFileSync } = require("fs");
 
-let blocklist
+const blocklistContent = new Set(
+  readFileSync("disposable_email_blocklist.conf", "utf-8")
+    .split("\r\n")
+    .map((line) => line.trim())
+    .slice(0, -1)
+);
 
-async function isDisposable(email) {
-  if (!blocklist) {
-    const content = await readFile('disposable_email_blocklist.conf', { encoding: 'utf-8' })
-
-    blocklist = content.split('\r\n').slice(0, -1)
+function isPermanentEmail(email) {
+  const domainParts = email.split("@")[1].split(".");
+  for (let i = 0; i < domainParts.length - 1; i++) {
+    if (blocklistContent.has(domainParts.slice(i).join("."))) {
+      const message = "Please enter your permanent email address.";
+      return [false, message];
+    }
   }
 
-  return blocklist.includes(email.split('@')[1])
+  return [true];
 }
 ```
 
@@ -166,7 +173,7 @@ if (IsBlocklisted(addr.Host)))
 
 ### Bash
 
-```
+```sh
 #!/bin/bash
 
 # This script checks if an email address is temporary.
@@ -174,16 +181,27 @@ if (IsBlocklisted(addr.Host)))
 # Read blocklist file into a bash array
 mapfile -t blocklist < disposable_email_blocklist.conf
 
-# Check if email domain is in blocklist
-if [[ " ${blocklist[@]} " =~ " ${email#*@} " ]]; then
-    message="Please enter your permanent email address."
-    return_value=false
-else
-    return_value=true
-fi
+email="$1"
+domain_part="${email#*@}"
 
-# Return result
-echo "$return_value"
+declare -A blocked_domains
+for d in "${blocklist[@]}"; do
+  blocked_domains["$d"]=1
+done
+    
+# Loop until we're on the last domain level
+while [[ "$domain_part" == *.* ]]; do
+  if [[ -n "${blocked_domains[$domain_part]:-}" ]]; then
+    echo "false:Please enter your permanent email address."
+    exit 1
+  fi
+
+  # Drop the left-most subdomain and try again (sub.mail.com -> mail.com)
+  domain_part="${domain_part#*.}"
+done
+
+echo "true:"
+exit 0
 ```
 
 ### Java
