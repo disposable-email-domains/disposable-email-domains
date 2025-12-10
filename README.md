@@ -120,10 +120,10 @@ def disposable_email?(email)
 
   (0...domain_parts.length - 1).each do |i|
     if BLOCKLIST_CONTENT.include?(domain_parts[i..-1].join('.'))
-      return false
+      return true
     end
   end
-  true
+  false
 end
 ```
 
