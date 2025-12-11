@@ -46,7 +46,7 @@ Changelog
 Example Usage
 =============
 
-TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby](#ruby), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Kotlin](#kotlin) [Swift](#swift)
+TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby](#ruby), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Kotlin](#kotlin), [Swift](#swift)
 
 ### Python
 ```Python
