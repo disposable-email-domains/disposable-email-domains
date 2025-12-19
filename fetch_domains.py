@@ -105,7 +105,8 @@ class TmailFetcher(DomainFetcher):
         domains = set()
         if "data" in data and "domains" in data["data"]:
             for domain in data["data"]["domains"]:
-                domains.add(domain.lower())
+                if isinstance(domain, str) and domain:
+                    domains.add(domain.lower())
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
@@ -139,7 +140,8 @@ class NoopmailFetcher(DomainFetcher):
         domains = set()
         if isinstance(data, list):
             for domain in data:
-                domains.add(domain.lower())
+                if isinstance(domain, str) and domain:
+                    domains.add(domain.lower())
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
