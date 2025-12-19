@@ -113,6 +113,40 @@ class TmailFetcher(DomainFetcher):
         return domains
 
 
+class NoopmailFetcher(DomainFetcher):
+    """Fetcher for Noopmail disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Noopmail")
+        self.url = "http://103.166.182.97:8080/api/d"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from Noopmail endpoint"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        # Parse JSON
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if isinstance(data, list):
+            for domain in data:
+                domains.add(domain.lower())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -152,6 +186,7 @@ def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: 
 FETCHERS = [
     YopmailFetcher(),
     TmailFetcher(),
+    NoopmailFetcher(),
     # Add more fetchers here in the future
     # Example: AnotherFetcher(),
 ]
