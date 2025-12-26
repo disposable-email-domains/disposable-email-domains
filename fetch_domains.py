@@ -149,6 +149,32 @@ class NoopmailFetcher(DomainFetcher):
         return domains
 
 
+class MailmaskFetcher(DomainFetcher):
+    """Fetcher for Mailmask disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Mailmask")
+        self.url = "https://mailmask.cc/domains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from Mailmask endpoint"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        # Parse JSON
+        try:
+            domains = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -188,6 +214,7 @@ def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: 
 FETCHERS = [
     YopmailFetcher(),
     TmailFetcher(),
+    MailmaskFetcher(),
     NoopmailFetcher(),
     # Add more fetchers here in the future
     # Example: AnotherFetcher(),
