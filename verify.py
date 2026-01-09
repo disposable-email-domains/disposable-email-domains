@@ -20,7 +20,8 @@ files = {
 
 with open("publicsuffixlist.local", "r") as psl_local_file:
     psl_local = set(line.strip() for line in psl_local_file if line.strip())
-
+with open("public_suffix_list.dat", "r") as latest:
+    psl = PublicSuffixList(latest)
 
 def download_suffixes():
     with open("public_suffix_list.dat", "wb") as file:
@@ -39,9 +40,6 @@ def check_for_public_suffixes(filename):
     """
     lines = files[filename]
     suffix_detected = False
-    psl = None
-    with open("public_suffix_list.dat", "r") as latest:
-        psl = PublicSuffixList(latest)
     for i, line in enumerate(lines):
         current_line = line.strip()
         public_suffix = psl.publicsuffix(current_line)
@@ -74,9 +72,6 @@ def check_for_invalid_level_domains(filename):
 
     Public suffixes are supplied from two sources: online database and local list.
     """
-    with open("public_suffix_list.dat", "r") as latest:
-        psl = PublicSuffixList(latest)
-
     invalid = set()
     for line in files[filename]:
         domain = line.strip()
@@ -90,6 +85,7 @@ def check_for_invalid_level_domains(filename):
                 private_parts = parts[:i]
                 if len(private_parts) == 1:
                     local_valid = True
+                    break
         if not (public_valid or local_valid):
             invalid.add(line)
 
