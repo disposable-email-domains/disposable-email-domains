@@ -29,6 +29,14 @@ def download_suffixes():
 
 
 def check_for_public_suffixes(filename):
+    """
+    Check if any line in the given file is just a public suffix.
+    Public suffixes are supplied from two sources: online database and local list.
+
+    Exit with code 1 if any public suffix is found.
+
+    :param filename: The name of the file to check.
+    """
     lines = files[filename]
     suffix_detected = False
     psl = None
@@ -60,10 +68,10 @@ def check_for_public_suffixes(filename):
 
 def check_for_invalid_level_domains(filename):
     """
-    Allow third or lower level domains if the length of the private part is 1
-    and the rest of the domain is a known public suffix.
+    Allow third or lower level domains in the list only if the entry contains a known public suffix
+    and the length of the private part is 1.
 
-    Suffixes are supplied from two sources: online database and local list.
+    Public suffixes are supplied from two sources: online database and local list.
     """
     with open("public_suffix_list.dat", "r") as latest:
         psl = PublicSuffixList(latest)
@@ -72,16 +80,17 @@ def check_for_invalid_level_domains(filename):
     for line in files[filename]:
         domain = line.strip()
         parts = domain.split('.')
+        public_valid = local_valid = True
         if len(psl.privateparts(domain)) > 1:
-            invalid.add(line)
-            break
+            public_valid = False
         for i in range(len(parts)):
             suffix = '.'.join(parts[i:])
             if suffix in psl_local:
                 private_parts = parts[:i]
                 if len(private_parts) > 1:
-                    invalid.add(line)
-                    break
+                    local_valid = False
+        if not (public_valid or local_valid):
+            invalid.add(line)
 
     if invalid:
         print("The following entries contain invalid third or lower level domain in {!r}:".format(filename))
@@ -134,7 +143,7 @@ if __name__ == "__main__":
     # Download the list of public suffixes
     download_suffixes()
 
-    # Check if any domains have a public suffix
+    # Check if any domain is just a public suffix
     check_for_public_suffixes(blocklist)
 
     # Check if any domains contain invalid level
