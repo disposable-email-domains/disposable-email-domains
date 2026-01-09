@@ -66,6 +66,7 @@ def check_for_public_suffixes(filename):
         )
         sys.exit(1)
 
+
 def check_for_invalid_level_domains(filename):
     """
     Allow third or lower level domains in the list only if the entry contains a known public suffix
@@ -80,15 +81,15 @@ def check_for_invalid_level_domains(filename):
     for line in files[filename]:
         domain = line.strip()
         parts = domain.split('.')
-        public_valid = local_valid = True
-        if len(psl.privateparts(domain)) > 1:
-            public_valid = False
+        public_valid = local_valid = False
+        if len(psl.privateparts(domain)) == 1:
+            public_valid = True
         for i in range(len(parts)):
             suffix = '.'.join(parts[i:])
             if suffix in psl_local:
                 private_parts = parts[:i]
-                if len(private_parts) > 1:
-                    local_valid = False
+                if len(private_parts) == 1:
+                    local_valid = True
         if not (public_valid or local_valid):
             invalid.add(line)
 
