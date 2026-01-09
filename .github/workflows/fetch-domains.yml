@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   update-domains:
+    if: github.repository == 'disposable-email-domains/disposable-email-domains'
     runs-on: ubuntu-latest
     strategy:
       matrix:
