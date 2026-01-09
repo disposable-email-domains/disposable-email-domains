@@ -184,6 +184,29 @@ def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: 
     return len(missing)
 
 
+def is_valid_level_domain(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
+    """Check if the domain is a valid-level domain"""
+    parts = domain.split('.')
+    public_valid = local_valid = False
+    if len(psl.privateparts(domain)) == 1:
+        public_valid = True
+    for i in range(len(parts)):
+        suffix = '.'.join(parts[i:])
+        if suffix in psl_local:
+            private_parts = parts[:i]
+            if len(private_parts) == 1:
+                local_valid = True
+                break
+    if public_valid or local_valid:
+        return True
+    else:
+        return False
+
+
+def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
+    """Check if the domain is a public suffix"""
+    return (psl.publicsuffix(domain) == domain) or (domain in psl_local)
+
 # Registry of all domain fetchers
 FETCHERS = [
     YopmailFetcher(),
@@ -197,6 +220,9 @@ FETCHERS = [
 def main():
     """Main function to run all registered domain fetchers"""
     blocklist_file = "disposable_email_blocklist.conf"
+    with open("publicsuffixlist.local", "r") as psl_local_file:
+        psl_local = set(line.strip() for line in psl_local_file if line.strip())
+
     psl = None
     # Load the public suffix list once, to filter out subdomains
     try:
@@ -220,12 +246,8 @@ def main():
                 dd = d.strip().lower()
                 if not dd:
                     continue
-                privateparts = psl.privateparts(dd)
-                # Include only domains that are not subdomains (exactly one private part)
-                if privateparts is not None and len(privateparts) == 1:
-                    # Also exclude pure public suffixes
-                    if psl.publicsuffix(dd) != dd:
-                        filtered_domains.add(dd)
+                if is_valid_level_domain(dd, psl, psl_local) and not is_public_suffix(dd, psl, psl_local):
+                    filtered_domains.add(dd)
             domains = filtered_domains
             print(f"Found {len(domains)} domains from {fetcher.get_name()}")
 
@@ -253,4 +275,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
