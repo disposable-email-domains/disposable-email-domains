@@ -279,11 +279,24 @@ def run_verification(domains_file=None):
             try:
                 pause(config.pause_short)
                 logger.info("Navigating to tmailor.com...")
-                page.goto(
-                    "https://tmailor.com/temp-mail",
-                    wait_until="networkidle",
-                    timeout=90000,
-                )
+
+                for retry in range(3):
+                    try:
+                        page.goto(
+                            "https://tmailor.com/temp-mail",
+                            wait_until="domcontentloaded",
+                            timeout=60000,
+                        )
+                        break
+                    except Exception as nav_error:
+                        if retry < 2:
+                            logger.warning(
+                                f"Navigation failed (attempt {retry + 1}/3), retrying..."
+                            )
+                            pause(config.pause_medium)
+                        else:
+                            raise nav_error
+
                 logger.info(f"Page loaded. Title: {page.title()}")
                 pause(config.pause_medium)
                 simulate_reading(page)
