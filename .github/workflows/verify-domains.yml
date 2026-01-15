@@ -11,15 +11,7 @@ on:
       max_attempts:
         description: "Maximum verification attempts"
         required: false
-        default: "50"
-      commit_screenshots:
-        description: "Commit screenshots back to branch"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "true"
-          - "false"
+        default: "100"
 
   # Run on PRs that modify the blocklist
   pull_request:
@@ -36,11 +28,11 @@ jobs:
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && 
-       github.head_ref == 'Manas1820:chore/update-blocklist' || github.head_ref == 'chore/update-blocklist' &&
+       (github.head_ref == 'Manas1820:chore/update-blocklist' || github.head_ref == 'chore/update-blocklist') &&
        github.event.pull_request.head.repo.owner.login == 'Manas1820')
 
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
 
     steps:
@@ -67,23 +59,10 @@ jobs:
       - name: Run domain verification
         id: verify
         env:
-          CI: "true"
-          MAX_ATTEMPTS: ${{ github.event.inputs.max_attempts || '100' }}
-          MAX_NO_RESULTS: "30"
+          MAX_ATTEMPTS: ${{ github.event.inputs.max_attempts || '1000' }}
+          MAX_NO_RESULTS: "100"
         run: |
           python scripts/verify_domains.py 2>&1 | tee verification.log
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-
-      - name: Upload screenshots as artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: domain-screenshots
-          path: |
-            domain_screenshots/*.png
-            domain_screenshots/results.json
-          retention-days: 30
-          if-no-files-found: ignore
 
       - name: Upload verification log
         uses: actions/upload-artifact@v4
@@ -96,53 +75,60 @@ jobs:
       - name: Generate summary
         if: always()
         run: |
-          echo "## Domain Verification Results" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔍 Domain Verification Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -f domain_screenshots/results.json ]; then
-            VERIFIED=$(jq -r '.verified_domains' domain_screenshots/results.json)
-            TOTAL=$(jq -r '.total_domains' domain_screenshots/results.json)
-            echo "**Verified:** ${VERIFIED}/${TOTAL} domains" >> $GITHUB_STEP_SUMMARY
+          # Extract and show final results
+          if grep -q "RESULTS:" verification.log; then
+            RESULTS=$(grep "RESULTS:" verification.log | head -1 | sed 's/.*RESULTS://')
+            echo "### 📊 Final Results" >> $GITHUB_STEP_SUMMARY
+            echo "**$RESULTS**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
-            echo "### Verified Domains" >> $GITHUB_STEP_SUMMARY
-            jq -r '.verified[]' domain_screenshots/results.json | while read domain; do
-              echo "- ✅ ${domain}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show skipped domains count
+          if grep -q "Skipping.*domains with existing screenshots" verification.log; then
+            SKIPPED=$(grep "Skipping.*domains with existing screenshots" verification.log | head -1)
+            echo "ℹ️ $SKIPPED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # List found domains
+          echo "### ✅ Found Domains" >> $GITHUB_STEP_SUMMARY
+          FOUND_COUNT=$(grep -c "MATCH FOUND:" verification.log || echo "0")
+          if [ "$FOUND_COUNT" -gt 0 ]; then
+            grep "MATCH FOUND:" verification.log | while read -r line; do
+              DOMAIN=$(echo "$line" | sed 's/.*MATCH FOUND: \([^ ]*\).*/\1/')
+              echo "- \`$DOMAIN\`" >> $GITHUB_STEP_SUMMARY
             done
+          else
+            echo "_No new domains found in this run_" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show not found domains if present
+          if grep -q "Not found" verification.log; then
+            echo "### ❌ Not Found" >> $GITHUB_STEP_SUMMARY
+            echo "<details><summary>Click to expand</summary>" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
-            MISSING_COUNT=$(jq -r '.missing | length' domain_screenshots/results.json)
-            if [ "$MISSING_COUNT" -gt 0 ]; then
-              echo "### Missing Domains (${MISSING_COUNT})" >> $GITHUB_STEP_SUMMARY
-              jq -r '.missing[]' domain_screenshots/results.json | while read domain; do
-                echo "- ❌ ${domain}" >> $GITHUB_STEP_SUMMARY
-              done
-            fi
-          else
-            echo "No results file found" >> $GITHUB_STEP_SUMMARY
+            NOT_FOUND=$(grep "Not found" verification.log | head -1 | sed "s/.*Not found ([^)]*): \['\([^']*\)'.*/\1/" | tr "', " "\n" | grep -v "^$")
+            echo "$NOT_FOUND" | while read -r domain; do
+              if [ -n "$domain" ]; then
+                echo "- \`$domain\`" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Commit screenshots (if enabled)
-        if: github.event.inputs.commit_screenshots == 'true' && github.event_name == 'workflow_dispatch'
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-
-          if [ -d domain_screenshots ] && [ "$(ls -A domain_screenshots/*.png 2>/dev/null)" ]; then
-            git add domain_screenshots/*.png
-            git add domain_screenshots/results.json || true
-            
-            if git diff --staged --quiet; then
-              echo "No new screenshots to commit"
-            else
-              SCREENSHOT_COUNT=$(git diff --staged --name-only | grep -c '.png' || echo 0)
-              git commit -m "Add ${SCREENSHOT_COUNT} verified domain screenshots [skip ci]"
-              git push
-              echo "Committed ${SCREENSHOT_COUNT} screenshots"
-            fi
-          else
-            echo "No screenshots directory or files found"
-          fi
+          # Show full log
+          echo "### 📋 Full Log" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Click to expand log output</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat verification.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
 
   # Job to comment on PR with results
   comment:
@@ -150,18 +136,18 @@ jobs:
     needs: verify
     if: >
       github.event_name == 'pull_request' && 
-      github.head_ref == 'chore/update-blocklist' &&
+      (github.head_ref == 'Manas1820:chore/update-blocklist' || github.head_ref == 'chore/update-blocklist') &&
       github.event.pull_request.head.repo.owner.login == 'Manas1820'
 
     permissions:
       pull-requests: write
 
     steps:
-      - name: Download artifacts
+      - name: Download log artifact
         uses: actions/download-artifact@v4
         with:
-          name: domain-screenshots
-          path: screenshots
+          name: verification-log
+          path: .
         continue-on-error: true
 
       - name: Comment on PR
@@ -172,23 +158,52 @@ jobs:
             let body = '## 🔍 Domain Verification Results\n\n';
 
             try {
-              const results = JSON.parse(fs.readFileSync('screenshots/results.json', 'utf8'));
-              body += `**Verified:** ${results.verified_domains}/${results.total_domains} domains\n\n`;
+              const log = fs.readFileSync('verification.log', 'utf8');
+              const lines = log.split('\n');
               
-              if (results.verified.length > 0) {
-                body += '### ✅ Verified Domains\n';
-                results.verified.forEach(d => body += `- \`${d}\`\n`);
-                body += '\n';
+              // Find RESULTS line
+              const resultsLine = lines.find(l => l.includes('RESULTS:'));
+              if (resultsLine) {
+                body += `### 📊 Final Results\n**${resultsLine.split('RESULTS:')[1].trim()}**\n\n`;
               }
               
-              if (results.missing.length > 0) {
-                body += `### ❌ Not Found (${results.missing.length})\n`;
-                body += '<details><summary>Click to expand</summary>\n\n';
-                results.missing.forEach(d => body += `- \`${d}\`\n`);
-                body += '</details>\n';
+              // Show skipped count
+              const skippedLine = lines.find(l => l.includes('Skipping') && l.includes('existing screenshots'));
+              if (skippedLine) {
+                const match = skippedLine.match(/Skipping (\d+) domains/);
+                if (match) body += `ℹ️ Skipped ${match[1]} domains with existing screenshots\n\n`;
               }
               
-              body += '\n📦 Screenshots available in workflow artifacts';
+              // Find MATCH FOUND lines
+              const matches = lines.filter(l => l.includes('MATCH FOUND:'));
+              body += '### ✅ Found Domains\n';
+              if (matches.length > 0) {
+                matches.forEach(m => {
+                  const domain = m.match(/MATCH FOUND: (\S+)/)?.[1];
+                  if (domain) body += `- \`${domain}\`\n`;
+                });
+              } else {
+                body += '_No new domains found in this run_\n';
+              }
+              body += '\n';
+              
+              // Show not found in collapsible
+              const notFoundLine = lines.find(l => l.includes('Not found'));
+              if (notFoundLine) {
+                const match = notFoundLine.match(/Not found \((\d+)\)/);
+                if (match) {
+                  body += `### ❌ Not Found (${match[1]})\n`;
+                  body += '<details><summary>Click to expand</summary>\n\n';
+                  const domainsMatch = notFoundLine.match(/\[([^\]]+)\]/);
+                  if (domainsMatch) {
+                    const domains = domainsMatch[1].replace(/'/g, '').split(', ');
+                    domains.forEach(d => body += `- \`${d.trim()}\`\n`);
+                  }
+                  body += '</details>\n\n';
+                }
+              }
+              
+              body += '📋 See workflow artifacts for full log';
             } catch (e) {
               body += 'No verification results available. Check workflow logs for details.';
             }

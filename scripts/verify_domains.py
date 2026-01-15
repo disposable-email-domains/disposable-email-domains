@@ -3,7 +3,7 @@
 """
 Disposable Email Domain Verification Script
 
-Verifies domains by visiting tmailor.com and capturing screenshots as proof.
+Verifies domains by visiting tmailor.com and logging when target domains are found.
 Designed for both local development and CI/CD pipelines.
 
 Usage:
@@ -11,17 +11,12 @@ Usage:
         source venv/bin/activate
         python scripts/verify_domains.py
 
-    CI Mode (faster, shorter delays):
-        CI=true python scripts/verify_domains.py
-
     Custom domains file:
         python scripts/verify_domains.py --domains-file path/to/domains.txt
 
 Environment Variables:
-    CI                  - Set to 'true' for CI mode (shorter delays)
-    MAX_ATTEMPTS        - Maximum verification attempts (default: 100, CI: 50)
+    MAX_ATTEMPTS        - Maximum verification attempts (default: 100)
     MAX_NO_RESULTS      - Stop after N attempts with no new results (default: 30)
-    SCREENSHOT_DIR      - Directory for screenshots (default: domain_screenshots)
 
 Requirements:
     pip install playwright
@@ -29,7 +24,6 @@ Requirements:
 """
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -137,12 +131,8 @@ VIEWPORTS = [
 
 class Config:
     def __init__(self):
-        self.is_ci = os.environ.get("CI", "").lower() == "true"
-        self.max_attempts = int(
-            os.environ.get("MAX_ATTEMPTS", 100 if self.is_ci else 100)
-        )
-        self.max_no_results = int(os.environ.get("MAX_NO_RESULTS", 30))
-        self.screenshot_dir = os.environ.get("SCREENSHOT_DIR", "domain_screenshots")
+        self.max_attempts = int(os.environ.get("MAX_ATTEMPTS", 1000))
+        self.max_no_results = int(os.environ.get("MAX_NO_RESULTS", 100))
 
         self.pause_short = (3, 8)
         self.pause_medium = (10, 25)
@@ -208,33 +198,35 @@ def simulate_reading(page):
     human_mouse_movement(page)
 
 
-def get_existing_screenshots(screenshot_dir, domains):
-    found = set()
+def get_already_verified(domains):
+    project_root = Path(__file__).parent.parent
+    screenshot_dir = project_root / "domain_screenshots"
+    verified = set()
     for domain in domains:
-        if Path(screenshot_dir, f"{domain}.png").exists():
-            found.add(domain)
-    return found
+        if (screenshot_dir / f"{domain}.png").exists():
+            verified.add(domain)
+    return verified
 
 
 def run_verification(domains_file=None):
-    project_root = Path(__file__).parent.parent
-    screenshot_dir = project_root / config.screenshot_dir
-    screenshot_dir.mkdir(exist_ok=True)
-
     domains_to_find = load_domains(domains_file)
-    found_domains = get_existing_screenshots(screenshot_dir, domains_to_find)
 
-    if found_domains:
-        logger.info(f"Skipping {len(found_domains)} domains with existing screenshots")
+    already_verified = get_already_verified(domains_to_find)
+    if already_verified:
+        logger.info(
+            f"Skipping {len(already_verified)} domains with existing screenshots"
+        )
+        domains_to_find = domains_to_find - already_verified
 
-    remaining = len(domains_to_find) - len(found_domains)
-    if remaining == 0:
-        logger.info("All domains already verified!")
-        return write_results(screenshot_dir, domains_to_find, found_domains)
+    if not domains_to_find:
+        logger.info("All domains already have screenshots!")
+        return 0
 
-    logger.info(f"Verifying {remaining} domains (max {config.max_attempts} attempts)")
-    if config.is_ci:
-        logger.info("Running in CI mode with reduced delays")
+    found_domains = set()
+
+    logger.info(
+        f"Looking for {len(domains_to_find)} domains (max {config.max_attempts} attempts)"
+    )
 
     attempt = 0
     no_results_counter = 0
@@ -294,7 +286,7 @@ def run_verification(domains_file=None):
                 pause(config.pause_medium)
                 simulate_reading(page)
 
-                emails_this_session = random.randint(2, 4)
+                emails_this_session = random.randint(3, 5)
 
                 for _ in range(emails_this_session):
                     if found_domains == domains_to_find:
@@ -332,20 +324,11 @@ def run_verification(domains_file=None):
                                 domain in domains_to_find
                                 and domain not in found_domains
                             ):
-                                logger.info(f"FOUND: {domain}")
-
-                                try:
-                                    screenshot_path = screenshot_dir / f"{domain}.png"
-                                    page.screenshot(
-                                        path=str(screenshot_path), full_page=False
-                                    )
-                                    found_domains.add(domain)
-                                    no_results_counter = 0
-                                    logger.info(
-                                        f"Screenshot saved ({len(found_domains)}/{len(domains_to_find)})"
-                                    )
-                                except Exception as e:
-                                    logger.error(f"Screenshot error: {e}")
+                                found_domains.add(domain)
+                                no_results_counter = 0
+                                logger.info(
+                                    f"*** MATCH FOUND: {domain} ({len(found_domains)}/{len(domains_to_find)}) ***"
+                                )
                             else:
                                 no_results_counter += 1
 
@@ -373,35 +356,20 @@ def run_verification(domains_file=None):
                     )
                     pause(config.pause_session)
 
-    return write_results(screenshot_dir, domains_to_find, found_domains)
+    return write_results(domains_to_find, found_domains)
 
 
-def write_results(screenshot_dir, domains_to_find, found_domains):
-    results = {
-        "total_domains": len(domains_to_find),
-        "verified_domains": len(found_domains),
-        "verified": sorted(found_domains),
-        "missing": sorted(domains_to_find - found_domains),
-    }
-
-    results_file = screenshot_dir / "results.json"
-    with open(results_file, "w") as f:
-        json.dump(results, f, indent=2)
-
-    logger.info(
-        f"Results: {len(found_domains)}/{len(domains_to_find)} domains verified"
-    )
+def write_results(domains_to_find, found_domains):
+    logger.info("=" * 60)
+    logger.info(f"RESULTS: {len(found_domains)}/{len(domains_to_find)} domains found")
+    logger.info("=" * 60)
 
     if found_domains:
-        logger.info(f"Verified: {sorted(found_domains)}")
+        logger.info(f"Found domains: {sorted(found_domains)}")
 
     missing = domains_to_find - found_domains
     if missing:
-        logger.warning(f"Missing ({len(missing)}): {sorted(missing)}")
-
-    if config.is_ci:
-        print(f"\n::set-output name=verified_count::{len(found_domains)}")
-        print(f"::set-output name=total_count::{len(domains_to_find)}")
+        logger.info(f"Not found ({len(missing)}): {sorted(missing)}")
 
     return 0 if found_domains else 1
 
