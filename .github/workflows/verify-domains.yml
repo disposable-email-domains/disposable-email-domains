@@ -36,7 +36,7 @@ jobs:
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && 
-       github.head_ref == 'chore/update-blocklist' &&
+       github.head_ref == 'Manas1820:chore/update-blocklist' || github.head_ref == 'chore/update-blocklist' &&
        github.event.pull_request.head.repo.owner.login == 'Manas1820')
 
     permissions:
