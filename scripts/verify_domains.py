@@ -278,23 +278,27 @@ def run_verification(domains_file=None):
 
             try:
                 pause(config.pause_short)
+                logger.info("Navigating to tmailor.com...")
                 page.goto(
                     "https://tmailor.com/temp-mail",
-                    wait_until="domcontentloaded",
-                    timeout=60000,
+                    wait_until="networkidle",
+                    timeout=90000,
                 )
+                logger.info(f"Page loaded. Title: {page.title()}")
                 pause(config.pause_medium)
                 simulate_reading(page)
 
                 emails_this_session = random.randint(3, 5)
+                logger.info(f"Will check {emails_this_session} emails this session")
 
-                for _ in range(emails_this_session):
+                for email_num in range(emails_this_session):
                     if found_domains == domains_to_find:
                         break
 
                     attempt += 1
 
                     try:
+                        logger.info(f"Waiting for email input (attempt {attempt})...")
                         page.wait_for_selector(
                             "input[name='currentEmailAddress']", timeout=20000
                         )
@@ -306,13 +310,16 @@ def run_verification(domains_file=None):
                             email_input.get_attribute("value")
                             or email_input.input_value()
                         )
+                        logger.info(f"Initial email value: '{email_value}'")
 
                         if not email_value or email_value == "Please wait a moment":
+                            logger.info("Email not ready, waiting longer...")
                             pause(config.pause_medium)
                             email_value = (
                                 email_input.get_attribute("value")
                                 or email_input.input_value()
                             )
+                            logger.info(f"Email value after wait: '{email_value}'")
 
                         if email_value and "@" in email_value:
                             domain = extract_domain(email_value)
@@ -331,6 +338,8 @@ def run_verification(domains_file=None):
                                 )
                             else:
                                 no_results_counter += 1
+                        else:
+                            logger.warning(f"No valid email found: '{email_value}'")
 
                         simulate_reading(page)
                         pause(config.pause_short)
@@ -339,14 +348,15 @@ def run_verification(domains_file=None):
                         new_email_btn.hover()
                         pause(config.pause_short)
                         new_email_btn.click()
+                        logger.info("Clicked new email button")
                         pause(config.pause_long)
 
                     except Exception as e:
-                        logger.debug(f"Email check error: {e}")
+                        logger.warning(f"Email check error: {e}")
                         pause(config.pause_medium)
 
             except Exception as e:
-                logger.debug(f"Session error: {e}")
+                logger.error(f"Session error: {e}")
 
             finally:
                 browser.close()
