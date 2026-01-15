@@ -1,3 +1,4 @@
 publicsuffixlist
 requests
 beautifulsoup4
+playwright
