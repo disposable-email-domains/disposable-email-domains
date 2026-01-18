@@ -69,7 +69,6 @@ True
 ```
 
 ### PHP
-contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.com/deguif), [@pjebs](https://github.com/pjebs) and [@Wruczek](https://github.com/Wruczek)
 
 1. Make sure the passed email is valid. You can check that with [filter_var](https://secure.php.net/manual/en/function.filter-var.php)
 2. Make sure you have the mbstring extension installed on your server
@@ -99,7 +98,6 @@ function isDisposableEmail($email, $blocklist_path = null) {
 Alternatively check out Composer package https://github.com/elliotjreed/disposable-emails-filter-php.
 
 ### Go
-contributed by [@pjebs](https://github.com/pjebs)
 
 ```go
 import ("bufio"; "os"; "strings";)
