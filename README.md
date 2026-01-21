@@ -365,3 +365,38 @@ func checkBlockList(email: String, completion: @escaping (Bool) -> Void) {
     task.resume()
 }
 ```
+
+### Dart
+contributed by [@the-razib](https://github.com/the-razib)
+
+```dart
+import 'dart:io';
+
+Future<Set<String>> loadBlocklist() async {
+  const filePath = 'lib/disposable_email_blocklist.conf';
+  final file = File(filePath);
+
+  if (!(await file.exists())) {
+    throw Exception("Blocklist file not found at path: $filePath");
+  }
+
+  final lines = await file.readAsLines();
+  return lines.map((line) => line.trim().toLowerCase()).toSet();
+}
+
+Future<bool> isDisposableEmail(String email) async {
+  final blocklist = await loadBlocklist();
+  final emailDomain = email.split('@').last.toLowerCase();
+  return blocklist.contains(emailDomain);
+}
+
+void main() async {
+  const email = "test@gmail.com";
+
+  if (await isDisposableEmail(email)) {
+    print("Please enter your permanent email address.");
+  } else {
+    print("Email is valid.");
+  }
+}
+```
