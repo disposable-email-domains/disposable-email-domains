@@ -46,7 +46,7 @@ Changelog
 Example Usage
 =============
 
-TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby](#ruby), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Kotlin](#kotlin), [Swift](#swift)
+TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby](#ruby), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Kotlin](#kotlin), [Swift](#swift), [Elixir](#elixir)
 
 ### Python
 ```Python
@@ -365,3 +365,31 @@ func checkBlockList(email: String, completion: @escaping (Bool) -> Void) {
     task.resume()
 }
 ```
+
+### Elixir
+
+```elixir
+defmodule MyApp.Email do
+  @blocklist File.read!("priv/disposable_email_blocklist.conf")
+             |> String.split("\n", trim: true)
+             |> MapSet.new()
+
+  def disposable?(email) do
+    case String.split(email, "@") do
+      [_, domain] ->
+        domain_parts = String.split(domain, ".")
+        length = length(domain_parts)
+
+        Enum.any?(0..(length - 1), fn i ->
+          suffix = Enum.slice(domain_parts, i..-1//1) |> Enum.join(".")
+          MapSet.member?(@blocklist, suffix)
+        end)
+
+      _ ->
+        false
+    end
+  end
+end
+```
+
+Alternatively check out Elixir package https://github.com/oshanz/disposable-email.
