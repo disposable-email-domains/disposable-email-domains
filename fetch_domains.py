@@ -51,7 +51,7 @@ class DomainFetcher:
 
 
 class YopmailFetcher(DomainFetcher):
-    """Fetcher for Yopmail disposable email domains"""
+    """Fetcher for 'yopmail com' disposable email domains """
 
     def __init__(self):
         super().__init__("Yopmail")
@@ -80,7 +80,7 @@ class YopmailFetcher(DomainFetcher):
 
 
 class TmailFetcher(DomainFetcher):
-    """Fetcher for Tmail disposable email domains"""
+    """Fetcher for 'tmail gg' disposable email domains """
 
     def __init__(self):
         super().__init__("Tmail")
@@ -115,7 +115,7 @@ class TmailFetcher(DomainFetcher):
 
 
 class YoursToolsFetcher(DomainFetcher):
-    """Fetcher for YoursTools disposable email domains"""
+    """Fetcher for 'yours tools' disposable email domains"""
 
     def __init__(self):
         super().__init__("YoursTools")
@@ -150,7 +150,7 @@ class YoursToolsFetcher(DomainFetcher):
 
 
 class NoopmailFetcher(DomainFetcher):
-    """Fetcher for Noopmail disposable email domains"""
+    """Fetcher for 'noopmail org' disposable email domains"""
 
     def __init__(self):
         super().__init__("Noopmail")
@@ -248,7 +248,6 @@ FETCHERS = [
     TmailFetcher(),
     NoopmailFetcher(),
     YoursToolsFetcher(),
-    # Add more fetchers here in the future
     # Example: AnotherFetcher(),
 ]
 
