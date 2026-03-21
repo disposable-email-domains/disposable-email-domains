@@ -165,6 +165,8 @@ function isPermanentEmail(email) {
 
 Alternatively check out NPM package https://github.com/mziyut/disposable-email-domains-js.
 
+Also check out [fakeout](https://www.npmjs.com/package/fakeout) — a zero-dependency package with an auto-updating blocklist that syncs daily via CI/CD, publishing new patch versions automatically. It provides `isDisposableEmail()`, `isDisposableDomain()`, and `getDisposableDomains()` functions with full TypeScript support.
+
 ### C#
 ```C#
 private static readonly Lazy<HashSet<string>> _emailBlockList = new Lazy<HashSet<string>>(() =>
