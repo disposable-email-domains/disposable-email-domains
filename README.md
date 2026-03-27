@@ -163,7 +163,7 @@ function isPermanentEmail(email) {
 }
 ```
 
-Alternatively check out NPM package https://github.com/mziyut/disposable-email-domains-js.
+Alternatively check out NPM packages https://github.com/mziyut/disposable-email-domains-js (updated weekly) and https://www.npmjs.com/package/fakeout (updated daily).
 
 ### C#
 ```C#
