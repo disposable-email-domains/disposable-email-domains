@@ -12,10 +12,9 @@ from requests import get
 
 
 blocklist = "disposable_email_blocklist.conf"
-allowlist = "allowlist.conf"
 
 files = {
-    filename: open(filename).read().splitlines() for filename in [allowlist, blocklist]
+    filename: open(filename).read().splitlines() for filename in [blocklist]
 }
 
 
@@ -149,18 +148,12 @@ if __name__ == "__main__":
     check_for_invalid_level_domains(blocklist, psl, psl_local)
 
     # Check if any domains are not lowercase
-    check_for_non_lowercase(allowlist)
     check_for_non_lowercase(blocklist)
 
     # Check if any domains are duplicated in the same list
-    check_for_duplicates(allowlist)
     check_for_duplicates(blocklist)
 
     # Check if any lists are not sorted
-    check_sort_order(allowlist)
     check_sort_order(blocklist)
-
-    # Check if any domains are in both the allowlist and blocklist
-    check_for_intersection(allowlist, blocklist)
 
     print("All domain entries seem valid.")
