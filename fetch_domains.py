@@ -7,7 +7,7 @@ import sys
 from typing import Set
 
 from bs4 import BeautifulSoup
-from requests import get
+from requests import get, post
 from publicsuffixlist import PublicSuffixList
 
 
@@ -51,7 +51,7 @@ class DomainFetcher:
 
 
 class YopmailFetcher(DomainFetcher):
-    """Fetcher for Yopmail disposable email domains"""
+    """Fetcher for 'yopmail com' disposable email domains """
 
     def __init__(self):
         super().__init__("Yopmail")
@@ -80,7 +80,7 @@ class YopmailFetcher(DomainFetcher):
 
 
 class TmailFetcher(DomainFetcher):
-    """Fetcher for Tmail disposable email domains"""
+    """Fetcher for 'tmail gg' disposable email domains """
 
     def __init__(self):
         super().__init__("Tmail")
@@ -114,8 +114,43 @@ class TmailFetcher(DomainFetcher):
         return domains
 
 
+class YoursToolsFetcher(DomainFetcher):
+    """Fetcher for 'yours tools' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("YoursTools")
+        self.url = "https://apis.kyfudao.com/apis.php"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from YoursTools endpoint"""
+        try:
+            response = post(self.url, timeout=30, data={"ajax": "get_domains"})
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        # Parse JSON
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if "domains" in data:
+            for domain in data["domains"]:
+                if isinstance(domain, str) and domain:
+                    domains.add(domain.lower())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 class NoopmailFetcher(DomainFetcher):
-    """Fetcher for Noopmail disposable email domains"""
+    """Fetcher for 'noopmail org' disposable email domains"""
 
     def __init__(self):
         super().__init__("Noopmail")
@@ -212,7 +247,7 @@ FETCHERS = [
     YopmailFetcher(),
     TmailFetcher(),
     NoopmailFetcher(),
-    # Add more fetchers here in the future
+    YoursToolsFetcher(),
     # Example: AnotherFetcher(),
 ]
 

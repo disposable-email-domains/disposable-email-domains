@@ -8,17 +8,13 @@ We cannot guarantee all of these can still be considered disposable but we do ba
 
 -- Ee Durbin, PyPI Admin, Director of Infrastructure (PSF) [link](https://blog.pypi.org/posts/2024-06-16-prohibiting-msn-emails/)
 
-Allowlist
-=========
-The file [allowlist.conf](allowlist.conf) gathers email domains that are often identified as disposable but in fact are not.
-
 Contributing
 ============
 Feel free to create PR with additions or request removal of some domain (with reasons).
 
 **Specifically, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.**
 
-Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @, unless they use public suffix, in which case include the 3rd level domain), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
+Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @, unless they use public suffix, in which case include the 3rd level domain), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort and remove duplicates.
 
 License
 =======
@@ -46,7 +42,7 @@ Changelog
 Example Usage
 =============
 
-TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby](#ruby), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Kotlin](#kotlin), [Swift](#swift)
+TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby](#ruby), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Kotlin](#kotlin), [Swift](#swift), [Elixir](#elixir)
 
 ### Python
 ```Python
@@ -163,7 +159,7 @@ function isPermanentEmail(email) {
 }
 ```
 
-Alternatively check out NPM package https://github.com/mziyut/disposable-email-domains-js.
+Alternatively check out NPM packages https://github.com/mziyut/disposable-email-domains-js (updated weekly) and https://www.npmjs.com/package/fakeout (updated daily).
 
 ### C#
 ```C#
@@ -365,3 +361,31 @@ func checkBlockList(email: String, completion: @escaping (Bool) -> Void) {
     task.resume()
 }
 ```
+
+### Elixir
+
+```elixir
+defmodule MyApp.Email do
+  @blocklist File.read!("priv/disposable_email_blocklist.conf")
+             |> String.split("\n", trim: true)
+             |> MapSet.new()
+
+  def disposable?(email) do
+    case String.split(email, "@") do
+      [_, domain] ->
+        domain_parts = String.split(domain, ".")
+        length = length(domain_parts)
+
+        Enum.any?(0..(length - 1), fn i ->
+          suffix = Enum.slice(domain_parts, i..-1//1) |> Enum.join(".")
+          MapSet.member?(@blocklist, suffix)
+        end)
+
+      _ ->
+        false
+    end
+  end
+end
+```
+
+Alternatively check out Elixir package https://github.com/oshanz/disposable-email.
