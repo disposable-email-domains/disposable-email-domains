@@ -1,4 +1,4 @@
-name: Update Domains from Sources
+name: Fetch new domains
 
 on:
   schedule:
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   update-domains:
+    if: github.repository == 'disposable-email-domains/disposable-email-domains'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -43,7 +44,7 @@ jobs:
           branch: update-domains-from-sources
           committer: dispoBot <martenson@dispobot>
           commit-message: Add missing domains from sources
-          title: Update domains from sources
+          title: Fetch new domains
           body: Automatically fetched and added missing domains from configured sources
           labels: automated
           assignees: martenson

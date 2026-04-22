@@ -7,7 +7,7 @@ import sys
 from typing import Set
 
 from bs4 import BeautifulSoup
-from requests import get
+from requests import get, post
 from publicsuffixlist import PublicSuffixList
 
 
@@ -51,7 +51,7 @@ class DomainFetcher:
 
 
 class YopmailFetcher(DomainFetcher):
-    """Fetcher for Yopmail disposable email domains"""
+    """Fetcher for 'yopmail com' disposable email domains """
 
     def __init__(self):
         super().__init__("Yopmail")
@@ -80,7 +80,7 @@ class YopmailFetcher(DomainFetcher):
 
 
 class TmailFetcher(DomainFetcher):
-    """Fetcher for Tmail disposable email domains"""
+    """Fetcher for 'tmail gg' disposable email domains """
 
     def __init__(self):
         super().__init__("Tmail")
@@ -114,8 +114,43 @@ class TmailFetcher(DomainFetcher):
         return domains
 
 
+class YoursToolsFetcher(DomainFetcher):
+    """Fetcher for 'yours tools' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("YoursTools")
+        self.url = "https://apis.kyfudao.com/apis.php"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from YoursTools endpoint"""
+        try:
+            response = post(self.url, timeout=30, data={"ajax": "get_domains"})
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        # Parse JSON
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if "domains" in data:
+            for domain in data["domains"]:
+                if isinstance(domain, str) and domain:
+                    domains.add(domain.lower())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 class NoopmailFetcher(DomainFetcher):
-    """Fetcher for Noopmail disposable email domains"""
+    """Fetcher for 'noopmail org' disposable email domains"""
 
     def __init__(self):
         super().__init__("Noopmail")
@@ -145,32 +180,6 @@ class NoopmailFetcher(DomainFetcher):
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class MailmaskFetcher(DomainFetcher):
-    """Fetcher for Mailmask disposable email domains"""
-
-    def __init__(self):
-        super().__init__("Mailmask")
-        self.url = "https://mailmask.cc/domains"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from Mailmask endpoint"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        # Parse JSON
-        try:
-            domains = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
 
         return domains
 
@@ -210,13 +219,35 @@ def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: 
     return len(missing)
 
 
+def is_valid_level_domain(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
+    """Check if the domain is a valid-level domain"""
+    parts = domain.split('.')
+    public_valid = local_valid = False
+    if len(psl.privateparts(domain)) == 1:
+        public_valid = True
+    for i in range(len(parts)):
+        suffix = '.'.join(parts[i:])
+        if suffix in psl_local:
+            private_parts = parts[:i]
+            if len(private_parts) == 1:
+                local_valid = True
+                break
+    if public_valid or local_valid:
+        return True
+    else:
+        return False
+
+
+def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
+    """Check if the domain is a public suffix"""
+    return (psl.publicsuffix(domain) == domain) or (domain in psl_local)
+
 # Registry of all domain fetchers
 FETCHERS = [
     YopmailFetcher(),
     TmailFetcher(),
-    MailmaskFetcher(),
     NoopmailFetcher(),
-    # Add more fetchers here in the future
+    YoursToolsFetcher(),
     # Example: AnotherFetcher(),
 ]
 
@@ -224,6 +255,9 @@ FETCHERS = [
 def main():
     """Main function to run all registered domain fetchers"""
     blocklist_file = "disposable_email_blocklist.conf"
+    with open("publicsuffixlist.local", "r") as psl_local_file:
+        psl_local = set(line.strip() for line in psl_local_file if line.strip())
+
     psl = None
     # Load the public suffix list once, to filter out subdomains
     try:
@@ -247,12 +281,8 @@ def main():
                 dd = d.strip().lower()
                 if not dd:
                     continue
-                privateparts = psl.privateparts(dd)
-                # Include only domains that are not subdomains (exactly one private part)
-                if privateparts is not None and len(privateparts) == 1:
-                    # Also exclude pure public suffixes
-                    if psl.publicsuffix(dd) != dd:
-                        filtered_domains.add(dd)
+                if is_valid_level_domain(dd, psl, psl_local) and not is_public_suffix(dd, psl, psl_local):
+                    filtered_domains.add(dd)
             domains = filtered_domains
             print(f"Found {len(domains)} domains from {fetcher.get_name()}")
 
@@ -280,4 +310,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
