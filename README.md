@@ -8,17 +8,13 @@ We cannot guarantee all of these can still be considered disposable but we do ba
 
 -- Ee Durbin, PyPI Admin, Director of Infrastructure (PSF) [link](https://blog.pypi.org/posts/2024-06-16-prohibiting-msn-emails/)
 
-Allowlist
-=========
-The file [allowlist.conf](allowlist.conf) gathers email domains that are often identified as disposable but in fact are not.
-
 Contributing
 ============
 Feel free to create PR with additions or request removal of some domain (with reasons).
 
-**Specifically, please cite in your PR where one can generate a disposable email address which uses that domain, so the maintainers can verify it.**
+**Specifically, please provide a screenshot in your PR of a page where one can generate a disposable email address which uses that domain.**
 
-Please add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort, remove duplicates and remove allowlisted domains.
+Add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @, unless they use public suffix, in which case include the 3rd level domain), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort and remove duplicates.
 
 License
 =======
@@ -46,17 +42,19 @@ Changelog
 Example Usage
 =============
 
-TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby on Rails](#ruby-on-rails), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Swift](#swift)
+TOC: [Python](#python), [PHP](#php), [Go](#go), [Ruby](#ruby), [NodeJS](#nodejs), [C#](#c), [bash](#bash), [Java](#java), [Kotlin](#kotlin), [Swift](#swift), [Elixir](#elixir)
 
 ### Python
 ```Python
 with open('disposable_email_blocklist.conf') as blocklist:
     blocklist_content = {line.rstrip() for line in blocklist.readlines()}
-if email.partition('@')[2] in blocklist_content:
-    message = "Please enter your permanent email address."
-    return (False, message)
-else:
-    return True
+
+domain_parts = email.partition('@')[2].split(".")
+for i in range(len(domain_parts) - 1):
+    if ".".join(domain_parts[i:]) in blocklist_content:
+        message = "Please enter your permanent email address."
+        return (False, message)
+return True
 ```
 
 Available as [PyPI module](https://pypi.org/project/disposable-email-domains) thanks to [@di](https://github.com/di)
@@ -67,7 +65,6 @@ True
 ```
 
 ### PHP
-contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.com/deguif), [@pjebs](https://github.com/pjebs) and [@Wruczek](https://github.com/Wruczek)
 
 1. Make sure the passed email is valid. You can check that with [filter_var](https://secure.php.net/manual/en/function.filter-var.php)
 2. Make sure you have the mbstring extension installed on your server
@@ -75,15 +72,28 @@ contributed by [@txt3rob](https://github.com/txt3rob), [@deguif](https://github.
 function isDisposableEmail($email, $blocklist_path = null) {
     if (!$blocklist_path) $blocklist_path = __DIR__ . '/disposable_email_blocklist.conf';
     $disposable_domains = file($blocklist_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+    // Convert blocklist to associative array for faster lookups
+    $blocklist_map = array_flip($disposable_domains);
+
     $domain = mb_strtolower(explode('@', trim($email))[1]);
-    return in_array($domain, $disposable_domains);
+    $domain_parts = explode('.', $domain);
+
+    // Check domain and all parent domains (skip checking TLD alone)
+    for ($i = 0; $i < count($domain_parts) - 1; $i++) {
+        $check_domain = implode('.', array_slice($domain_parts, $i));
+        if (isset($blocklist_map[$check_domain])) {
+            return true;
+        }
+    }
+
+    return false;
 }
 ```
 
 Alternatively check out Composer package https://github.com/elliotjreed/disposable-emails-filter-php.
 
 ### Go
-contributed by [@pjebs](https://github.com/pjebs)
 
 ```go
 import ("bufio"; "os"; "strings";)
@@ -97,54 +107,59 @@ func init() {
 }
 
 func isDisposableEmail(email string) (disposable bool) {
-	segs := strings.Split(email, "@")
-	_, disposable = disposableList[strings.ToLower(segs[len(segs)-1])]
-	return
+	domain_parts := strings.Split(strings.Split(email, "@")[1], ".")
+	for i := 0; i < len(domain_parts)-1; i++ {
+		if _, ok := disposableList[strings.Join(domain_parts[i:], ".")]; ok {
+			return true
+		}
+	}
+	return false
 }
 ```
 
 Alternatively check out Go package https://github.com/rocketlaunchr/anti-disposable-email.
 
-### Ruby on Rails
-contributed by [@MitsunChieh](https://github.com/MitsunChieh)
-
-In the resource model, usually it is `user.rb`:
-
+### Ruby
 ```Ruby
-before_validation :reject_email_blocklist
+BLOCKLIST_CONTENT = File.readlines('disposable_email_blocklist.conf', chomp: true).to_set.freeze
 
-def reject_email_blocklist
-  blocklist = File.read('config/disposable_email_blocklist.conf').split("\n")
+def disposable_email?(email)
+  domain_parts = email.split('@')[1].split('.')
 
-  if blocklist.include?(email.split('@')[1])
-    errors[:email] << 'invalid email'
-    return false
-  else
-    return true
+  (0...domain_parts.length - 1).each do |i|
+    if BLOCKLIST_CONTENT.include?(domain_parts[i..-1].join('.'))
+      return true
+    end
   end
+  false
 end
 ```
 
 ### Node.js
-contributed by [@boywithkeyboard](https://github.com/boywithkeyboard)
-
 ```js
-import { readFile } from 'node:fs/promises'
+const { readFileSync } = require("fs");
 
-let blocklist
+const blocklistContent = new Set(
+  readFileSync("disposable_email_blocklist.conf", "utf-8")
+    .split("\r\n")
+    .map((line) => line.trim())
+    .slice(0, -1)
+);
 
-async function isDisposable(email) {
-  if (!blocklist) {
-    const content = await readFile('disposable_email_blocklist.conf', { encoding: 'utf-8' })
-
-    blocklist = content.split('\r\n').slice(0, -1)
+function isPermanentEmail(email) {
+  const domainParts = email.split("@")[1].split(".");
+  for (let i = 0; i < domainParts.length - 1; i++) {
+    if (blocklistContent.has(domainParts.slice(i).join("."))) {
+      const message = "Please enter your permanent email address.";
+      return [false, message];
+    }
   }
 
-  return blocklist.includes(email.split('@')[1])
+  return [true];
 }
 ```
 
-Alternatively check out NPM package https://github.com/mziyut/disposable-email-domains-js.
+Alternatively check out NPM packages https://github.com/mziyut/disposable-email-domains-js (updated weekly) and https://www.npmjs.com/package/fakeout (updated daily).
 
 ### C#
 ```C#
@@ -166,7 +181,7 @@ if (IsBlocklisted(addr.Host)))
 
 ### Bash
 
-```
+```sh
 #!/bin/bash
 
 # This script checks if an email address is temporary.
@@ -174,16 +189,27 @@ if (IsBlocklisted(addr.Host)))
 # Read blocklist file into a bash array
 mapfile -t blocklist < disposable_email_blocklist.conf
 
-# Check if email domain is in blocklist
-if [[ " ${blocklist[@]} " =~ " ${email#*@} " ]]; then
-    message="Please enter your permanent email address."
-    return_value=false
-else
-    return_value=true
-fi
+email="$1"
+domain_part="${email#*@}"
 
-# Return result
-echo "$return_value"
+declare -A blocked_domains
+for d in "${blocklist[@]}"; do
+  blocked_domains["$d"]=1
+done
+    
+# Loop until we're on the last domain level
+while [[ "$domain_part" == *.* ]]; do
+  if [[ -n "${blocked_domains[$domain_part]:-}" ]]; then
+    echo "false:Please enter your permanent email address."
+    exit 1
+  fi
+
+  # Drop the left-most subdomain and try again (sub.mail.com -> mail.com)
+  domain_part="${domain_part#*.}"
+done
+
+echo "true:"
+exit 0
 ```
 
 ### Java
@@ -226,6 +252,92 @@ public static boolean isDisposable(InternetAddress contact) throws AddressExcept
 }
 ```
 
+### Kotlin
+contributed by [@nillpoe](https://github.com/nillpoe)
+
+```kotlin
+companion object {
+    private const val PSL_LIST_URL = "https://publicsuffix.org/list/public_suffix_list.dat"
+    private const val DISPOSABLE_LIST_URL = "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/refs/heads/main/disposable_email_blocklist.conf"
+}
+
+private val publicSuffixes = mutableSetOf<String>()
+private val wildcardSuffixes = mutableSetOf<String>()
+private val exceptions = mutableSetOf<String>()
+
+private val disposableEmailDomains = loadDisposableDomains()
+
+init {
+    try {
+        BufferedReader(InputStreamReader(URI(PSL_LIST_URL).toURL().openStream())).use { reader ->
+            reader.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("//") }
+                .forEach {
+                    when {
+                        it.startsWith("!") -> exceptions.add(it.removePrefix("!"))
+                        it.startsWith("*.") -> wildcardSuffixes.add(it.removePrefix("*."))
+                        else -> publicSuffixes.add(it)
+                    }
+                }
+        }
+    } catch (e: Exception) {
+        println("Failed to load PSL: ${e.message}")
+    }
+}
+
+private fun loadDisposableDomains(): Set<String> {
+    val result = mutableSetOf<String>()
+    try {
+        BufferedReader(InputStreamReader(URI(DISPOSABLE_LIST_URL).toURL().openStream())).use { reader ->
+            reader.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .forEach(result::add)
+        }
+    } catch (e: Exception) {
+        println("Failed to load disposable list: ${e.message}")
+    }
+    return result
+}
+
+fun getRegistrableDomain(domain: String): String? {
+    val parts = domain.lowercase().split(".")
+    for (i in 0 until parts.size) {
+        val candidate = parts.subList(i, parts.size).joinToString(".")
+
+        if (exceptions.contains(candidate)) {
+            if (i > 0) {
+                return parts.subList(i - 1, parts.size).joinToString(".")
+            }
+            return null
+        }
+
+        if (publicSuffixes.contains(candidate)) {
+            if (i > 0) {
+                return parts.subList(i - 1, parts.size).joinToString(".")
+            }
+            return null
+        }
+
+        if (wildcardSuffixes.contains(parts.subList(i + 1, parts.size).joinToString("."))) {
+            if (i > 0) {
+                return parts.subList(i - 1, parts.size).joinToString(".")
+            }
+            return null
+        }
+    }
+
+    return if (parts.size >= 2) parts.takeLast(2).joinToString(".") else null
+}
+
+fun isDisposable(email: String): Boolean {
+    val domain = email.substringAfter("@")
+    val registrable = getRegistrableDomain(domain)
+    return registrable != null && disposableEmailDomains.contains(registrable)
+}
+```
+
 ### Swift
 contributed by [@1998code](https://github.com/1998code)
 
@@ -249,3 +361,31 @@ func checkBlockList(email: String, completion: @escaping (Bool) -> Void) {
     task.resume()
 }
 ```
+
+### Elixir
+
+```elixir
+defmodule MyApp.Email do
+  @blocklist File.read!("priv/disposable_email_blocklist.conf")
+             |> String.split("\n", trim: true)
+             |> MapSet.new()
+
+  def disposable?(email) do
+    case String.split(email, "@") do
+      [_, domain] ->
+        domain_parts = String.split(domain, ".")
+        length = length(domain_parts)
+
+        Enum.any?(0..(length - 1), fn i ->
+          suffix = Enum.slice(domain_parts, i..-1//1) |> Enum.join(".")
+          MapSet.member?(@blocklist, suffix)
+        end)
+
+      _ ->
+        false
+    end
+  end
+end
+```
+
+Alternatively check out Elixir package https://github.com/oshanz/disposable-email.
