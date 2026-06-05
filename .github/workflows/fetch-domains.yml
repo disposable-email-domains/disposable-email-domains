@@ -37,7 +37,7 @@ jobs:
           bash maintain.sh
       - name: Verify blocklist
         run: |
-          python verify.py
+          python verify.py --fix
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
@@ -49,4 +49,3 @@ jobs:
           labels: automated
           assignees: martenson
           reviewers: martenson
-

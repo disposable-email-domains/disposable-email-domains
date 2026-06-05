@@ -184,6 +184,52 @@ class NoopmailFetcher(DomainFetcher):
         return domains
 
 
+class GPTMailFetcher(DomainFetcher):
+    """Fetcher for `mail chatgpt org uk` disposable email domains"""
+
+    def __init__(self):
+        super().__init__("GPTMail")
+        self.url = "https://mail.chatgpt.org.uk/api/domains/status"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from GPTMail domains status API"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        # Parse JSON
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if "success" in data and data["success"] and "data" in data:
+            domain_data = data["data"]
+            # Handle both list format and object with domains array
+            if isinstance(domain_data, list):
+                for entry in domain_data:
+                    if isinstance(entry, dict) and "domain_name" in entry:
+                        domain = entry["domain_name"].lower().strip()
+                        if domain:
+                            domains.add(domain)
+            elif isinstance(domain_data, dict) and "domains" in domain_data:
+                for entry in domain_data["domains"]:
+                    if isinstance(entry, dict) and "domain_name" in entry:
+                        domain = entry["domain_name"].lower().strip()
+                        if domain:
+                            domains.add(domain)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -248,6 +294,7 @@ FETCHERS = [
     TmailFetcher(),
     NoopmailFetcher(),
     YoursToolsFetcher(),
+    GPTMailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
