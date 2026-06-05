@@ -16,11 +16,13 @@ Feel free to create PR with additions or request removal of some domain (with re
 
 Add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @, unless they use public suffix, in which case include the 3rd level domain), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort and remove duplicates.
 
+You can also use the `verify.py` script to validate entries extensively, including against public suffix lists. Adding `--fix` parameter will attempt to fix all found issues in place, see the [verify.py](verify.py) for more guidance.
+
 License
 =======
 You can copy, modify, distribute and use the work, even for commercial purposes, all without asking permission.
 
-[![Licensed under CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/) 
+[![Licensed under CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/)
 
 Changelog
 ============
@@ -38,7 +40,7 @@ Changelog
 * 7/27/16 - Converted all domains to the second level. This means that starting from [this commit](https://github.com/martenson/disposable-email-domains/commit/61ae67aacdab0b19098de2e13069d7c35b74017a) the implementers should take care of matching the second level domain names properly i.e. `@xxx.yyy.zzz` should match `yyy.zzz` in blocklist where `zzz` is a [public suffix](https://publicsuffix.org/). More info in [#46](https://github.com/martenson/disposable-email-domains/issues/46)
 
 * 9/2/14 - First commit [393c21f5](https://github.com/disposable-email-domains/disposable-email-domains/commit/393c21f56b5186f8db7d197b11cf1d7c5490a6f9)
-  
+
 Example Usage
 =============
 
@@ -196,7 +198,7 @@ declare -A blocked_domains
 for d in "${blocklist[@]}"; do
   blocked_domains["$d"]=1
 done
-    
+
 # Loop until we're on the last domain level
 while [[ "$domain_part" == *.* ]]; do
   if [[ -n "${blocked_domains[$domain_part]:-}" ]]; then
@@ -230,7 +232,7 @@ static {
             if (line.isEmpty()) {
                 continue;
             }
-            
+
             domains.add(line);
         }
     } catch (IOException ex) {
