@@ -229,7 +229,7 @@ class GPTMailFetcher(DomainFetcher):
 
         return domains
 
-    class TinyhostFetcher(DomainFetcher):
+class TinyhostFetcher(DomainFetcher):
     """Fetcher for `tinyhost shop` disposable email domains"""
 
     def __init__(self):
