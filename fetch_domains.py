@@ -229,6 +229,39 @@ class GPTMailFetcher(DomainFetcher):
 
         return domains
 
+class TinyhostFetcher(DomainFetcher):
+    """Fetcher for `tinyhost shop` disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Tinyhost")
+        self.url = "https://tinyhost.shop/api/all-domains/"
+
+    def fetch(self) -> Set[str]:
+        """Fetch all online domains from the Tinyhost API"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if isinstance(data, dict) and "domains" in data:
+            for domain in data["domains"]:
+                domain = domain.lower().strip()
+                if domain:
+                    domains.add(domain)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+        return domains
+
 
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
@@ -295,6 +328,7 @@ FETCHERS = [
     NoopmailFetcher(),
     YoursToolsFetcher(),
     GPTMailFetcher(),
+    TinyhostFetcher(),
     # Example: AnotherFetcher(),
 ]
 
