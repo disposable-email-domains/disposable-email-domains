@@ -4,6 +4,7 @@
 
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Set
 
 from bs4 import BeautifulSoup
@@ -263,6 +264,57 @@ class TinyhostFetcher(DomainFetcher):
         return domains
 
 
+class GeneratorEmailFetcher(DomainFetcher):
+    """Fetcher for 'generator.email' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("GeneratorEmail")
+        self.url = "https://generator.email/"
+
+    def _fetch_once(self, attempt: int, domain_pattern: "re.Pattern") -> Set[str]:
+        """Fetch and parse domains from a single page load"""
+        domains = set()
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains (attempt {attempt + 1}): {e}", file=sys.stderr)
+            return domains
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Domains appear as <li> items in the domain dropdown list
+        for li in soup.find_all("li"):
+            text = li.get_text(strip=True).lower()
+            if domain_pattern.match(text):
+                domains.add(text)
+
+        # Fallback: domains also appear in <p onclick="change_dropdown_list(...)">
+        for p in soup.find_all("p", onclick=re.compile("change_dropdown_list")):
+            text = p.get_text(strip=True).lower()
+            if domain_pattern.match(text):
+                domains.add(text)
+
+        return domains
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains by checking the page concurrently (domain list rotates)"""
+        domains = set()
+        domain_pattern = re.compile(
+            r'^([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+)$'
+        )
+
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            futures = [executor.submit(self._fetch_once, i, domain_pattern) for i in range(50)]
+            for future in as_completed(futures):
+                domains.update(future.result())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -329,6 +381,7 @@ FETCHERS = [
     YoursToolsFetcher(),
     GPTMailFetcher(),
     TinyhostFetcher(),
+    GeneratorEmailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
