@@ -315,6 +315,49 @@ class GeneratorEmailFetcher(DomainFetcher):
         return domains
 
 
+class CyberTempFetcher(DomainFetcher):
+    """Fetcher for 'cybertemp xyz' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("CyberTemp")
+        self.url = "https://api.cybertemp.xyz/getDomains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from CyberTemp API"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        # Handle list response: ["domain1.com", "domain2.com", ...]
+        if isinstance(data, list):
+            for entry in data:
+                if isinstance(entry, str) and entry:
+                    domains.add(entry.lower().strip())
+        # Handle object response: {"domains": [...]}
+        elif isinstance(data, dict):
+            for key in ("domains", "data"):
+                if key in data and isinstance(data[key], list):
+                    for entry in data[key]:
+                        if isinstance(entry, str) and entry:
+                            domains.add(entry.lower().strip())
+                    break
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -382,6 +425,7 @@ FETCHERS = [
     GPTMailFetcher(),
     TinyhostFetcher(),
     GeneratorEmailFetcher(),
+    CyberTempFetcher(),
     # Example: AnotherFetcher(),
 ]
 
