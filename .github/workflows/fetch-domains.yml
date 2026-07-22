@@ -32,6 +32,30 @@ jobs:
       - name: Fetch domains from sources
         run: |
           python fetch_domains.py
+      - name: Generate statistics for PR
+        id: stats
+        run: |
+          if [ -f fetch_stats.json ]; then
+            echo "stats<<EOF" >> $GITHUB_OUTPUT
+            echo "## Statistics" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            echo "| Source | Domains Found | New Added |" >> $GITHUB_OUTPUT
+            echo "|--------|---------------|-----------|" >> $GITHUB_OUTPUT
+            python3 - << 'PYTHON_SCRIPT' >> $GITHUB_OUTPUT
+import json
+with open('fetch_stats.json') as f:
+    stats = json.load(f)
+for source, data in sorted(stats.items()):
+    found = data.get('found', 0)
+    added = data.get('added', 0)
+    error = data.get('error', '')
+    status = f'Error: {error}'[:15] if error else ''
+    print(f'| {source} | {found} | {added} |{status}')
+PYTHON_SCRIPT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "stats=No statistics available" >> $GITHUB_OUTPUT
+          fi
       - name: Run maintain script
         run: |
           bash maintain.sh
@@ -45,7 +69,10 @@ jobs:
           committer: dispoBot <martenson@dispobot>
           commit-message: Add missing domains from sources
           title: Fetch new domains
-          body: Automatically fetched and added missing domains from configured sources
+          body: |
+            Automatically fetched and added missing domains from configured sources
+
+            ${{ steps.stats.outputs.stats }}
           labels: automated
           assignees: martenson
           reviewers: martenson

@@ -2,6 +2,7 @@
 
 """Fetch domains from various sources and add missing ones to the blocklist"""
 
+import json
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -448,6 +449,7 @@ def main():
 
     total_added = 0
     sources_processed = 0
+    stats = {}  # Track statistics per fetcher
 
     for fetcher in FETCHERS:
         print(f"\n=== Fetching domains from {fetcher.get_name()} ===")
@@ -462,17 +464,38 @@ def main():
                 if is_valid_level_domain(dd, psl, psl_local) and not is_public_suffix(dd, psl, psl_local):
                     filtered_domains.add(dd)
             domains = filtered_domains
-            print(f"Found {len(domains)} domains from {fetcher.get_name()}")
+            raw_count = len(raw_domains)
+            filtered_count = len(domains)
+            print(f"Found {filtered_count} domains from {fetcher.get_name()} (raw: {raw_count})")
 
+            added = 0
             if domains:
                 added = add_domains_to_blocklist(domains, blocklist_file, fetcher.get_name())
                 total_added += added
                 sources_processed += 1
             else:
                 print(f"No domains found from {fetcher.get_name()}")
+
+            # Record statistics for this fetcher
+            stats[fetcher.get_name()] = {
+                "found": filtered_count,
+                "added": added,
+                "raw": raw_count
+            }
         except Exception as e:
             print(f"Error processing {fetcher.get_name()}: {e}", file=sys.stderr)
+            # Record failed fetcher with zero counts
+            stats[fetcher.get_name()] = {
+                "found": 0,
+                "added": 0,
+                "raw": 0,
+                "error": str(e)
+            }
             continue
+
+    # Write statistics to JSON file for workflow to consume
+    with open("fetch_stats.json", "w") as f:
+        json.dump(stats, f, indent=2)
 
     print(f"\n=== Summary ===")
     print(f"Processed {sources_processed} source(s)")
