@@ -156,29 +156,32 @@ class NoopmailFetcher(DomainFetcher):
 
     def __init__(self):
         super().__init__("Noopmail")
-        self.url = "http://103.166.182.97:8080/api/d"
+        self.url = "https://noopmail.org/api/rd"
 
     def fetch(self) -> Set[str]:
-        """Fetch domains from Noopmail endpoint"""
+        """Fetch domains from Noopmail by polling the random domain endpoint"""
+        import time
+        domains = set()
         try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
+            # Poll the /api/rd endpoint to collect domains
+            # Each call returns a single random domain with expiration info
+            # The site has a small pool of ~17 domains, so 50 requests is enough
+            for i in range(50):
+                try:
+                    response = get(self.url, timeout=10)
+                    response.raise_for_status()
+                    data = response.json()
+                    if isinstance(data, dict) and "dm" in data:
+                        domain = data["dm"].lower().strip()
+                        if domain:
+                            domains.add(domain)
+                    # Small delay to avoid rate limiting
+                    time.sleep(0.05)
+                except Exception:
+                    # Continue on individual request failures
+                    continue
         except Exception as e:
             print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        # Parse JSON
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        if isinstance(data, list):
-            for domain in data:
-                if isinstance(domain, str) and domain:
-                    domains.add(domain.lower())
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
