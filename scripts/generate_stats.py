@@ -27,7 +27,7 @@ def main():
         found = data.get("found", 0)
         added = data.get("added", 0)
         error = data.get("error", "")
-        status = f"Error: {error}"[:15] if error else ""
+        status = f" Error: {error}"[:15] if error else ""
         lines.append(f"| {source} | {found} | {added} |{status}")
 
     # Write to GITHUB_OUTPUT using multiline syntax
