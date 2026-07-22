@@ -1,4 +1,4 @@
-name: Verify blocklist integrity
+name: Fix blocklist integrity
 
 on:
   schedule:

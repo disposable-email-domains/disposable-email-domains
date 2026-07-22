@@ -1,4 +1,4 @@
-name: validate blocklist entries
+name: Validate blocklist integrity
 
 on:
   push:
