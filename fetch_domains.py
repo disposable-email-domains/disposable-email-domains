@@ -81,41 +81,6 @@ class YopmailFetcher(DomainFetcher):
         return domains
 
 
-class TmailFetcher(DomainFetcher):
-    """Fetcher for 'tmail gg' disposable email domains """
-
-    def __init__(self):
-        super().__init__("Tmail")
-        self.url = "http://45.207.211.187:1234/api/domains"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from Tmail endpoint"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        # Parse JSON
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        if "data" in data and "domains" in data["data"]:
-            for domain in data["data"]["domains"]:
-                if isinstance(domain, str) and domain:
-                    domains.add(domain.lower())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
 class YoursToolsFetcher(DomainFetcher):
     """Fetcher for 'yours tools' disposable email domains"""
 
@@ -152,7 +117,11 @@ class YoursToolsFetcher(DomainFetcher):
 
 
 class NoopmailFetcher(DomainFetcher):
-    """Fetcher for 'noopmail org' disposable email domains"""
+    """
+    Fetcher for 'noopmail org' disposable email domains.
+
+    Blocks github IP range - run locally via vpn/proxy.
+    """
 
     def __init__(self):
         super().__init__("Noopmail")
@@ -423,7 +392,6 @@ def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool
 # Registry of all domain fetchers
 FETCHERS = [
     YopmailFetcher(),
-    TmailFetcher(),
     NoopmailFetcher(),
     YoursToolsFetcher(),
     GPTMailFetcher(),
