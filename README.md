@@ -391,3 +391,25 @@ end
 ```
 
 Alternatively check out Elixir package https://github.com/oshanz/disposable-email.
+
+### Rust
+
+Install:
+
+```bash
+cargo add dispocheck
+```
+
+```rust
+use dispocheck::{is_disposable_domain, is_disposable_email};
+
+assert!(is_disposable_email("someone@mailinator.com"));
+assert!(is_disposable_domain("mailinator.com"));
+assert!(!is_disposable_email("someone@gmail.com"));
+```
+
+Crate:
+- https://crates.io/crates/dispocheck
+
+Repository:
+- https://github.com/ritikmitra/dispocheck-rs
