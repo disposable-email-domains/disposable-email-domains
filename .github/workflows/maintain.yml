@@ -1,10 +1,9 @@
-name: run Maintenance script
+name: Verify blocklist integrity
 
 on:
   schedule:
-  #   # * is a special character in YAML so you have to quote this string
-  #   # We'll run this weekly at 23.00 on Saturday.
-    - cron:  '0 23 * * 6'
+    # Run weekly at 23:00 on Saturday
+    - cron: '0 23 * * 6'
   workflow_dispatch:
 
 permissions:
@@ -12,35 +11,48 @@ permissions:
   pull-requests: write
 
 jobs:
-  build:
+  verify:
+    if: github.repository == 'disposable-email-domains/disposable-email-domains'
     runs-on: ubuntu-latest
-    if: github.event.repository.fork == false
-    strategy:
-      matrix:
-        python-version: [3.11]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.x'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: Maintain
+      - name: Verify blocklist
+        id: verify
         run: |
-            python verify.py
+          if ! python verify.py; then
+            echo "has_diff=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_diff=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Fix and commit if changes
+        if: steps.verify.outputs.has_diff == 'true'
+        run: |
+          python verify.py --fix
+          git config user.name "dispoBot"
+          git config user.email "martenson@dispobot"
+          git add disposable_email_blocklist.conf
+          git commit -m "Auto-fix blocklist formatting and validity"
       - name: Create Pull Request
+        if: steps.verify.outputs.has_diff == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
-          branch: create-pull-request/${{ steps.vars.outputs.branch_name }}
+          branch: update-blocklist-verification
           committer: dispoBot <martenson@dispobot>
-          commit-message: execution of maintenance script
-          title: maintenance script run
-          body: maintenance.sh has been executed and found a diff
+          commit-message: Auto-fix blocklist formatting and validity
+          title: Fix blocklist integrity issues
+          body: |
+            The `verify.py` script detected issues in the blocklist that need to be fixed.
+            This PR was automatically created after running `verify.py --fix`.
           labels: automated
           assignees: martenson
           reviewers: martenson
