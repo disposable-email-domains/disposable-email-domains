@@ -202,6 +202,40 @@ class TinyhostFetcher(DomainFetcher):
         return domains
 
 
+class OpenInboxFetcher(DomainFetcher):
+    """Fetcher for `openinbox io` disposable email domains"""
+
+    def __init__(self):
+        super().__init__("OpenInbox")
+        self.url = "https://api.openinbox.io/api/inbox/platform-domains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch platform (disposable inbox) domains from the OpenInbox API"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if isinstance(data, dict) and "domains" in data:
+            for domain in data["domains"]:
+                domain = domain.lower().strip()
+                if domain:
+                    domains.add(domain)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+        return domains
+
+
 class GeneratorEmailFetcher(DomainFetcher):
     """Fetcher for 'generator.email' disposable email domains"""
 
@@ -360,6 +394,7 @@ FETCHERS = [
     NoopmailFetcher(),
     GPTMailFetcher(),
     TinyhostFetcher(),
+    OpenInboxFetcher(),
     GeneratorEmailFetcher(),
     CyberTempFetcher(),
     # Example: AnotherFetcher(),
