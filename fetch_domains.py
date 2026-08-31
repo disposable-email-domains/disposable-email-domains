@@ -366,6 +366,9 @@ class TempMailFetcher(DomainFetcher):
             for _ in range(30):
                 try:
                     response = post(self.url, json=payload, headers=headers, timeout=15)
+                    # Stop early on hard blocks (Cloudflare 403, auth 401)
+                    if response.status_code in (401, 403):
+                        break
                     # Stop on rate limit: {"errorMessage":"Too Many Request","errorName":"TooManyRequestsException"}
                     if response.status_code == 429 or "TooManyRequests" in response.text:
                         break
@@ -376,16 +379,22 @@ class TempMailFetcher(DomainFetcher):
                         domain = mailbox.rsplit("@", 1)[1].lower().strip()
                         if domain:
                             domains.add(domain)
-                    # Be polite to the endpoint
-                    time.sleep(2)
                 except Exception:
                     # Continue on individual request failures
-                    continue
+                    pass
+                finally:
+                    # Always wait between attempts, also after failures
+                    time.sleep(2)
         except Exception as e:
             print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
 
         if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+            print(
+                f"Warning: No domains found from {self.name}. "
+                "This may be caused by rate limiting or IP/Cloudflare blocking, "
+                "or the endpoint may have changed.",
+                file=sys.stderr,
+            )
 
         return domains
 
