@@ -330,6 +330,66 @@ class CyberTempFetcher(DomainFetcher):
         return domains
 
 
+class TempMailFetcher(DomainFetcher):
+    """Fetcher for 'temp-mail org' disposable email domains.
+
+    temp-mail.org does not expose its domain list publicly (the /domains
+    endpoint requires an auth secret). The active pool is only observable
+    by requesting new mailboxes via its mailbox API, which returns a
+    randomly picked domain per call. Domains rotate over time, so sampling
+    a few times per run is enough to gradually cover the pool.
+
+    Rate limits (~5-10 mailbox creations per IP, then a short block) are
+    handled by stopping early and returning the domains collected so far.
+    """
+
+    def __init__(self):
+        super().__init__("TempMail")
+        self.url = "https://web2.temp-mail.org/mailbox"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from temp-mail.org by polling its mailbox endpoint"""
+        import time
+        domains = set()
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+            ),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Origin": "https://temp-mail.org",
+            "Referer": "https://temp-mail.org/",
+        }
+        payload = {"method": "getMailBox", "params": {"lang": "en"}, "id": 1}
+        try:
+            for _ in range(30):
+                try:
+                    response = post(self.url, json=payload, headers=headers, timeout=15)
+                    # Stop on rate limit: {"errorMessage":"Too Many Request","errorName":"TooManyRequestsException"}
+                    if response.status_code == 429 or "TooManyRequests" in response.text:
+                        break
+                    response.raise_for_status()
+                    data = response.json()
+                    mailbox = data.get("mailbox", "")
+                    if isinstance(mailbox, str) and "@" in mailbox:
+                        domain = mailbox.rsplit("@", 1)[1].lower().strip()
+                        if domain:
+                            domains.add(domain)
+                    # Be polite to the endpoint
+                    time.sleep(2)
+                except Exception:
+                    # Continue on individual request failures
+                    continue
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -397,6 +457,7 @@ FETCHERS = [
     OpenInboxFetcher(),
     GeneratorEmailFetcher(),
     CyberTempFetcher(),
+    TempMailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
