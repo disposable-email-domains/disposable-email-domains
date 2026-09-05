@@ -236,6 +236,78 @@ class OpenInboxFetcher(DomainFetcher):
         return domains
 
 
+class CleanTempMailFetcher(DomainFetcher):
+    """Fetcher for `cleantempmail com` disposable email domains"""
+
+    def __init__(self):
+        super().__init__("CleanTempMail")
+        self.url = "https://cleantempmail.com/api/domains"
+        self.limit = 2000
+
+    def fetch(self) -> Set[str]:
+        """Fetch all domains from the paginated CleanTempMail API"""
+        domains = set()
+        offset = 0
+
+        while True:
+            try:
+                response = get(
+                    self.url,
+                    params={"limit": self.limit, "offset": offset},
+                    timeout=30,
+                )
+                response.raise_for_status()
+            except Exception as e:
+                print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+                return set()
+
+            try:
+                data = response.json()
+            except Exception as e:
+                print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+                return set()
+
+            page = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(data, dict) or data.get("success") is not True or not isinstance(page, dict):
+                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
+                return set()
+
+            page_domains = page.get("domains")
+            page_limit = page.get("limit")
+            page_offset = page.get("offset")
+            total = page.get("total")
+            integers = (page_limit, page_offset, total)
+            valid_integers = all(isinstance(value, int) and not isinstance(value, bool) for value in integers)
+            if (
+                not isinstance(page_domains, list)
+                or not valid_integers
+                or page_limit <= 0
+                or page_offset != offset
+                or total < page_offset
+                or len(page_domains) > page_limit
+                or page_offset + len(page_domains) > total
+                or (page_offset < total and not page_domains)
+                or (page_offset + page_limit < total and len(page_domains) != page_limit)
+            ):
+                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
+                return set()
+
+            for domain in page_domains:
+                if isinstance(domain, str):
+                    normalized = domain.lower().strip()
+                    if normalized:
+                        domains.add(normalized)
+
+            if page_offset + page_limit >= total:
+                break
+            offset = page_offset + page_limit
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The API may have changed.", file=sys.stderr)
+
+        return domains
+
+
 class GeneratorEmailFetcher(DomainFetcher):
     """Fetcher for 'generator.email' disposable email domains"""
 
@@ -464,6 +536,7 @@ FETCHERS = [
     GPTMailFetcher(),
     TinyhostFetcher(),
     OpenInboxFetcher(),
+    CleanTempMailFetcher(),
     GeneratorEmailFetcher(),
     CyberTempFetcher(),
     TempMailFetcher(),
