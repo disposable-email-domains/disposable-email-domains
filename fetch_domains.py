@@ -236,6 +236,76 @@ class OpenInboxFetcher(DomainFetcher):
         return domains
 
 
+class CleanTempMailFetcher(DomainFetcher):
+    """Fetcher for `cleantempmail com` disposable email domains"""
+
+    def __init__(self):
+        super().__init__("CleanTempMail")
+        self.url = "https://cleantempmail.com/api/domains"
+        self.limit = 2000
+
+    def fetch(self) -> Set[str]:
+        """Fetch all domains from the paginated CleanTempMail API.
+        """
+        domains = set()
+        offset = 0
+
+        max_pages = 1000
+
+        for _ in range(max_pages):
+            try:
+                response = get(
+                    self.url,
+                    params={"limit": self.limit, "offset": offset},
+                    timeout=30,
+                )
+                response.raise_for_status()
+                data = response.json()
+            except Exception as e:
+                print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+                return set()
+
+            if not isinstance(data, dict):
+                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
+                return set()
+
+            if data.get("success") is False:
+                print(f"Error from {self.name}: API reported failure", file=sys.stderr)
+                return set()
+
+            page = data.get("data")
+            if not isinstance(page, dict) or not isinstance(page.get("domains"), list):
+                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
+                return set()
+            page_domains = page["domains"]
+
+            total = page.get("total")
+            if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+                total = None
+
+            before = len(domains)
+            for domain in page_domains:
+                if isinstance(domain, str):
+                    normalized = domain.lower().strip()
+                    if normalized:
+                        domains.add(normalized)
+
+            # Stop when the API has nothing more for us, or when we either
+            # reached the advertised total or made no forward progress.
+            if not page_domains:
+                break
+            offset += len(page_domains)
+            if total is not None and offset >= total:
+                break
+            if len(domains) == before:
+                break
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The API may have changed.", file=sys.stderr)
+
+        return domains
+
+
 class GeneratorEmailFetcher(DomainFetcher):
     """Fetcher for 'generator.email' disposable email domains"""
 
@@ -464,6 +534,7 @@ FETCHERS = [
     GPTMailFetcher(),
     TinyhostFetcher(),
     OpenInboxFetcher(),
+    CleanTempMailFetcher(),
     GeneratorEmailFetcher(),
     CyberTempFetcher(),
     TempMailFetcher(),
