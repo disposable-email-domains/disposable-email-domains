@@ -245,11 +245,14 @@ class CleanTempMailFetcher(DomainFetcher):
         self.limit = 2000
 
     def fetch(self) -> Set[str]:
-        """Fetch all domains from the paginated CleanTempMail API"""
+        """Fetch all domains from the paginated CleanTempMail API.
+        """
         domains = set()
         offset = 0
 
-        while True:
+        max_pages = 1000
+
+        for _ in range(max_pages):
             try:
                 response = get(
                     self.url,
@@ -257,50 +260,45 @@ class CleanTempMailFetcher(DomainFetcher):
                     timeout=30,
                 )
                 response.raise_for_status()
+                data = response.json()
             except Exception as e:
                 print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
                 return set()
 
-            try:
-                data = response.json()
-            except Exception as e:
-                print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-                return set()
-
-            page = data.get("data") if isinstance(data, dict) else None
-            if not isinstance(data, dict) or data.get("success") is not True or not isinstance(page, dict):
+            if not isinstance(data, dict):
                 print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
                 return set()
 
-            page_domains = page.get("domains")
-            page_limit = page.get("limit")
-            page_offset = page.get("offset")
+            if data.get("success") is False:
+                print(f"Error from {self.name}: API reported failure", file=sys.stderr)
+                return set()
+
+            page = data.get("data")
+            if not isinstance(page, dict) or not isinstance(page.get("domains"), list):
+                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
+                return set()
+            page_domains = page["domains"]
+
             total = page.get("total")
-            integers = (page_limit, page_offset, total)
-            valid_integers = all(isinstance(value, int) and not isinstance(value, bool) for value in integers)
-            if (
-                not isinstance(page_domains, list)
-                or not valid_integers
-                or page_limit <= 0
-                or page_offset != offset
-                or total < page_offset
-                or len(page_domains) > page_limit
-                or page_offset + len(page_domains) > total
-                or (page_offset < total and not page_domains)
-                or (page_offset + page_limit < total and len(page_domains) != page_limit)
-            ):
-                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
-                return set()
+            if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+                total = None
 
+            before = len(domains)
             for domain in page_domains:
                 if isinstance(domain, str):
                     normalized = domain.lower().strip()
                     if normalized:
                         domains.add(normalized)
 
-            if page_offset + page_limit >= total:
+            # Stop when the API has nothing more for us, or when we either
+            # reached the advertised total or made no forward progress.
+            if not page_domains:
                 break
-            offset = page_offset + page_limit
+            offset += len(page_domains)
+            if total is not None and offset >= total:
+                break
+            if len(domains) == before:
+                break
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The API may have changed.", file=sys.stderr)
