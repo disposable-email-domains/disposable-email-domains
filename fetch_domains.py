@@ -537,6 +537,7 @@ class MailTmFetcher(DomainFetcher):
     def fetch(self) -> Set[str]:
         """Fetch active domains from the mail.tm public domains API (paginated)"""
         domains = set()
+        page_size = None
         try:
             for page in range(1, 6):
                 response = get(f"{self.url}?page={page}", timeout=30)
@@ -545,14 +546,19 @@ class MailTmFetcher(DomainFetcher):
                 member = data.get("hydra:member")
                 if not isinstance(member, list) or not member:
                     break
+                # Derive the API page size from the first page instead of assuming one
+                if page_size is None:
+                    page_size = len(member)
                 for entry in member:
                     if not isinstance(entry, dict):
                         continue
-                    domain = entry.get("domain", "")
-                    if domain and entry.get("isActive", True):
+                    if entry.get("isActive") is not True:
+                        continue
+                    domain = entry.get("domain")
+                    if isinstance(domain, str) and domain:
                         domains.add(domain.lower().strip())
-                # Stop when a page returns fewer items than the page size
-                if len(member) < 30:
+                # Stop when a page returns fewer items than the first page did
+                if len(member) < page_size:
                     break
         except Exception as e:
             print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
