@@ -470,7 +470,7 @@ class TempMailFetcher(DomainFetcher):
 
 
 class TempMailIOFetcher(DomainFetcher):
-    """Fetcher for 'temp-mail io' disposable email domains.
+    """Fetcher for 'temp-mail.io' disposable email domains.
 
     temp-mail.io (a separate service from temp-mail.org) exposes its
     active domain pool through a public JSON endpoint, so the domains can
