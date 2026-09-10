@@ -313,7 +313,7 @@ class GeneratorEmailFetcher(DomainFetcher):
         super().__init__("GeneratorEmail")
         self.url = "https://generator.email/"
 
-    def _fetch_once(self, attempt: int) -> Set[str]:
+    def _fetch_once(self, attempt: int, domain_pattern: "re.Pattern") -> Set[str]:
         """Fetch and parse the randomly selected domain from a single page load"""
         domains = set()
         try:
@@ -328,7 +328,7 @@ class GeneratorEmailFetcher(DomainFetcher):
         match = re.search(r'cur_domain:"([^"]+)"', response.text)
         if match:
             domain = match.group(1).lower().strip()
-            if domain:
+            if domain_pattern.match(domain):
                 domains.add(domain)
 
         return domains
@@ -336,9 +336,12 @@ class GeneratorEmailFetcher(DomainFetcher):
     def fetch(self) -> Set[str]:
         """Fetch domains by sampling page loads concurrently (domain rotates per load)"""
         domains = set()
+        domain_pattern = re.compile(
+            r'^([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+)$'
+        )
 
         with ThreadPoolExecutor(max_workers=50) as executor:
-            futures = [executor.submit(self._fetch_once, i) for i in range(50)]
+            futures = [executor.submit(self._fetch_once, i, domain_pattern) for i in range(50)]
             for future in as_completed(futures):
                 domains.update(future.result())
 
