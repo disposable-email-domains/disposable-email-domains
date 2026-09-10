@@ -313,8 +313,8 @@ class GeneratorEmailFetcher(DomainFetcher):
         super().__init__("GeneratorEmail")
         self.url = "https://generator.email/"
 
-    def _fetch_once(self, attempt: int, domain_pattern: "re.Pattern") -> Set[str]:
-        """Fetch and parse domains from a single page load"""
+    def _fetch_once(self, attempt: int) -> Set[str]:
+        """Fetch and parse the randomly selected domain from a single page load"""
         domains = set()
         try:
             response = get(self.url, timeout=30)
@@ -323,31 +323,22 @@ class GeneratorEmailFetcher(DomainFetcher):
             print(f"Error fetching {self.name} domains (attempt {attempt + 1}): {e}", file=sys.stderr)
             return domains
 
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Domains appear as <li> items in the domain dropdown list
-        for li in soup.find_all("li"):
-            text = li.get_text(strip=True).lower()
-            if domain_pattern.match(text):
-                domains.add(text)
-
-        # Fallback: domains also appear in <p onclick="change_dropdown_list(...)">
-        for p in soup.find_all("p", onclick=re.compile("change_dropdown_list")):
-            text = p.get_text(strip=True).lower()
-            if domain_pattern.match(text):
-                domains.add(text)
+        # Each page load selects a random domain from the pool and embeds it
+        # in the page's JS config as cur_domain:"..."
+        match = re.search(r'cur_domain:"([^"]+)"', response.text)
+        if match:
+            domain = match.group(1).lower().strip()
+            if domain:
+                domains.add(domain)
 
         return domains
 
     def fetch(self) -> Set[str]:
-        """Fetch domains by checking the page concurrently (domain list rotates)"""
+        """Fetch domains by sampling page loads concurrently (domain rotates per load)"""
         domains = set()
-        domain_pattern = re.compile(
-            r'^([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+)$'
-        )
 
         with ThreadPoolExecutor(max_workers=50) as executor:
-            futures = [executor.submit(self._fetch_once, i, domain_pattern) for i in range(50)]
+            futures = [executor.submit(self._fetch_once, i) for i in range(50)]
             for future in as_completed(futures):
                 domains.update(future.result())
 
