@@ -179,6 +179,7 @@ class TinyhostFetcher(DomainFetcher):
     def fetch(self) -> Set[str]:
         """Fetch domains from the Tinyhost public random domains API (paginated)"""
         domains = set()
+        duplicate_pages = 0
         try:
             # Each page returns a random selection from the pool, so sample
             # several pages per run; coverage accumulates across daily runs.
@@ -196,11 +197,19 @@ class TinyhostFetcher(DomainFetcher):
                         if domain not in domains:
                             domains.add(domain)
                             new_domains += 1
-                # Stop once pages only return duplicates
-                if not items or new_domains == 0:
+                if not items:
+                    break
+                # Pages are random samples, so stop only after several
+                # consecutive pages add nothing new
+                if new_domains == 0:
+                    duplicate_pages += 1
+                else:
+                    duplicate_pages = 0
+                if duplicate_pages >= 4:
                     break
         except Exception as e:
             print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return domains
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
