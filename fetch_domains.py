@@ -184,11 +184,12 @@ class TinyhostFetcher(DomainFetcher):
             # Each page returns a random selection from the pool, so sample
             # several pages per run; coverage accumulates across daily runs.
             for page in range(1, 11):
-                response = get(f"{self.url}?page={page}&limit=50", timeout=30)
+                response = get(self.url, params={"page": page, "limit": 50}, timeout=30)
                 response.raise_for_status()
                 data = response.json()
                 if not isinstance(data, dict) or not isinstance(data.get("domains"), list):
-                    break
+                    print(f"Error: Malformed response from {self.name} while fetching domains.", file=sys.stderr)
+                    return domains
                 items = data["domains"]
                 new_domains = 0
                 for domain in items:
@@ -208,7 +209,7 @@ class TinyhostFetcher(DomainFetcher):
                 if duplicate_pages >= 4:
                     break
         except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            print(f"Error fetching {self.name} domains (keeping {len(domains)} domain(s) collected so far): {e}", file=sys.stderr)
             return domains
 
         if not domains:
