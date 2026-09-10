@@ -173,29 +173,29 @@ class TinyhostFetcher(DomainFetcher):
 
     def __init__(self):
         super().__init__("Tinyhost")
-        self.url = "https://tinyhost.shop/api/all-domains/"
+        # Public endpoint used by the site UI; /api/all-domains/ requires a token now
+        self.url = "https://tinyhost.shop/api/random-domains/"
 
     def fetch(self) -> Set[str]:
-        """Fetch all online domains from the Tinyhost API"""
+        """Fetch domains from the Tinyhost public random domains API (paginated)"""
+        domains = set()
         try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
+            # Each page returns a random selection from the pool, so sample
+            # several pages per run; coverage accumulates across daily runs.
+            for page in range(1, 11):
+                response = get(f"{self.url}?page={page}&limit=50", timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                if not isinstance(data, dict) or not isinstance(data.get("domains"), list):
+                    break
+                items = data["domains"]
+                for domain in items:
+                    if isinstance(domain, str) and domain:
+                        domains.add(domain.lower().strip())
+                if not items:
+                    break
         except Exception as e:
             print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        if isinstance(data, dict) and "domains" in data:
-            for domain in data["domains"]:
-                domain = domain.lower().strip()
-                if domain:
-                    domains.add(domain)
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
