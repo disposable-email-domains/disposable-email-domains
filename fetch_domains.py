@@ -189,10 +189,15 @@ class TinyhostFetcher(DomainFetcher):
                 if not isinstance(data, dict) or not isinstance(data.get("domains"), list):
                     break
                 items = data["domains"]
+                new_domains = 0
                 for domain in items:
                     if isinstance(domain, str) and domain:
-                        domains.add(domain.lower().strip())
-                if not items:
+                        domain = domain.lower().strip()
+                        if domain not in domains:
+                            domains.add(domain)
+                            new_domains += 1
+                # Stop once pages only return duplicates
+                if not items or new_domains == 0:
                     break
         except Exception as e:
             print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
@@ -325,7 +330,7 @@ class GeneratorEmailFetcher(DomainFetcher):
 
         # Each page load selects a random domain from the pool and embeds it
         # in the page's JS config as cur_domain:"..."
-        match = re.search(r'cur_domain:"([^"]+)"', response.text)
+        match = re.search(r'cur_domain\s*:\s*["\']([^"\']+)["\']', response.text)
         if match:
             domain = match.group(1).lower().strip()
             if domain_pattern.match(domain):
