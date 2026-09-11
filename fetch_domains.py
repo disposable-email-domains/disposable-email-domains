@@ -173,29 +173,44 @@ class TinyhostFetcher(DomainFetcher):
 
     def __init__(self):
         super().__init__("Tinyhost")
-        self.url = "https://tinyhost.shop/api/all-domains/"
+        # Public endpoint used by the site UI; /api/all-domains/ requires a token now
+        self.url = "https://tinyhost.shop/api/random-domains/"
 
     def fetch(self) -> Set[str]:
-        """Fetch all online domains from the Tinyhost API"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
+        """Fetch domains from the Tinyhost public random domains API (paginated)"""
         domains = set()
-        if isinstance(data, dict) and "domains" in data:
-            for domain in data["domains"]:
-                domain = domain.lower().strip()
-                if domain:
-                    domains.add(domain)
+        duplicate_pages = 0
+        try:
+            # Each page returns a random selection from the pool, so sample
+            # several pages per run; coverage accumulates across daily runs.
+            for page in range(1, 11):
+                response = get(self.url, params={"page": page, "limit": 50}, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                if not isinstance(data, dict) or not isinstance(data.get("domains"), list):
+                    print(f"Error: Malformed response from {self.name} while fetching domains.", file=sys.stderr)
+                    return domains
+                items = data["domains"]
+                new_domains = 0
+                for domain in items:
+                    if isinstance(domain, str) and domain:
+                        domain = domain.lower().strip()
+                        if domain not in domains:
+                            domains.add(domain)
+                            new_domains += 1
+                if not items:
+                    break
+                # Pages are random samples, so stop only after several
+                # consecutive pages add nothing new
+                if new_domains == 0:
+                    duplicate_pages += 1
+                else:
+                    duplicate_pages = 0
+                if duplicate_pages >= 4:
+                    break
+        except Exception as e:
+            print(f"Error fetching {self.name} domains (keeping {len(domains)} domain(s) collected so far): {e}", file=sys.stderr)
+            return domains
 
         if not domains:
             print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
@@ -314,7 +329,7 @@ class GeneratorEmailFetcher(DomainFetcher):
         self.url = "https://generator.email/"
 
     def _fetch_once(self, attempt: int, domain_pattern: "re.Pattern") -> Set[str]:
-        """Fetch and parse domains from a single page load"""
+        """Fetch and parse the randomly selected domain from a single page load"""
         domains = set()
         try:
             response = get(self.url, timeout=30)
@@ -323,24 +338,18 @@ class GeneratorEmailFetcher(DomainFetcher):
             print(f"Error fetching {self.name} domains (attempt {attempt + 1}): {e}", file=sys.stderr)
             return domains
 
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Domains appear as <li> items in the domain dropdown list
-        for li in soup.find_all("li"):
-            text = li.get_text(strip=True).lower()
-            if domain_pattern.match(text):
-                domains.add(text)
-
-        # Fallback: domains also appear in <p onclick="change_dropdown_list(...)">
-        for p in soup.find_all("p", onclick=re.compile("change_dropdown_list")):
-            text = p.get_text(strip=True).lower()
-            if domain_pattern.match(text):
-                domains.add(text)
+        # Each page load selects a random domain from the pool and embeds it
+        # in the page's JS config as cur_domain:"..."
+        match = re.search(r'cur_domain\s*:\s*["\']([^"\']+)["\']', response.text)
+        if match:
+            domain = match.group(1).lower().strip()
+            if domain_pattern.match(domain):
+                domains.add(domain)
 
         return domains
 
     def fetch(self) -> Set[str]:
-        """Fetch domains by checking the page concurrently (domain list rotates)"""
+        """Fetch domains by sampling page loads concurrently (domain rotates per load)"""
         domains = set()
         domain_pattern = re.compile(
             r'^([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+)$'
