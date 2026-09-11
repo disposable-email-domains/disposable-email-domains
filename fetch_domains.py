@@ -478,6 +478,49 @@ class TempMailFetcher(DomainFetcher):
         return domains
 
 
+class TempMailIOFetcher(DomainFetcher):
+    """Fetcher for 'temp-mail.io' disposable email domains.
+
+    temp-mail.io (a separate service from temp-mail.org) exposes its
+    active domain pool through a public JSON endpoint, so the domains can
+    be fetched directly.
+    """
+
+    def __init__(self):
+        super().__init__("TempMail.io")
+        self.url = "https://api.internal.temp-mail.io/api/v2/domains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from the temp-mail.io public domains API"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        if isinstance(data, dict) and isinstance(data.get("domains"), list):
+            for entry in data["domains"]:
+                if isinstance(entry, str) and entry:
+                    domains.add(entry.lower().strip())
+        elif isinstance(data, list):
+            for entry in data:
+                if isinstance(entry, str) and entry:
+                    domains.add(entry.lower().strip())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -547,6 +590,7 @@ FETCHERS = [
     GeneratorEmailFetcher(),
     CyberTempFetcher(),
     TempMailFetcher(),
+    TempMailIOFetcher(),
     # Example: AnotherFetcher(),
 ]
 
