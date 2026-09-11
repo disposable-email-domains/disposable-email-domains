@@ -536,6 +536,48 @@ def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool
     """Check if the domain is a public suffix"""
     return (psl.publicsuffix(domain) == domain) or (domain in psl_local)
 
+class MailTmFetcher(DomainFetcher):
+    """Fetcher for 'mail.tm' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Mail.tm")
+        self.url = "https://api.mail.tm/domains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch active domains from the mail.tm public domains API (paginated)"""
+        domains = set()
+        page_size = None
+        try:
+            for page in range(1, 6):
+                response = get(f"{self.url}?page={page}", timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                member = data.get("hydra:member")
+                if not isinstance(member, list) or not member:
+                    break
+                # Derive the API page size from the first page instead of assuming one
+                if page_size is None:
+                    page_size = len(member)
+                for entry in member:
+                    if not isinstance(entry, dict):
+                        continue
+                    if entry.get("isActive") is not True:
+                        continue
+                    domain = entry.get("domain")
+                    if isinstance(domain, str) and domain:
+                        domains.add(domain.lower().strip())
+                # Stop when a page returns fewer items than the first page did
+                if len(member) < page_size:
+                    break
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 # Registry of all domain fetchers
 FETCHERS = [
     YopmailFetcher(),
@@ -547,6 +589,7 @@ FETCHERS = [
     GeneratorEmailFetcher(),
     CyberTempFetcher(),
     TempMailFetcher(),
+    MailTmFetcher(),
     # Example: AnotherFetcher(),
 ]
 
