@@ -7,9 +7,9 @@ assignees: ''
 
 ---
 
-**Is this domain really used by disposable email provider? Show us screenshots if possible.**
+**Is this domain really used by disposable email provider? Show us screenshots.**
 
-Specifically, please tell us where one can generate a disposable email address which uses that domain, so the maintainers can verify it.
+Specifically, please tell us where one can generate a disposable email address which uses that domain, so the maintainers can verify it. Include screenshots.
 
 **Can you create a PR yourself instead of an issue?**
 
