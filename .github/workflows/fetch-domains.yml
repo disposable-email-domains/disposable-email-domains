@@ -32,6 +32,9 @@ jobs:
       - name: Fetch domains from sources
         run: |
           python fetch_domains.py
+      - name: Generate statistics for PR
+        id: stats
+        run: python3 scripts/generate_stats.py
       - name: Run maintain script
         run: |
           bash maintain.sh
@@ -45,7 +48,10 @@ jobs:
           committer: dispoBot <martenson@dispobot>
           commit-message: Add missing domains from sources
           title: Fetch new domains
-          body: Automatically fetched and added missing domains from configured sources
+          body: |
+            Automatically fetched and added missing domains from configured sources
+
+            ${{ steps.stats.outputs.stats }}
           labels: automated
           assignees: martenson
           reviewers: martenson

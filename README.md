@@ -14,9 +14,21 @@ Feel free to create PR with additions or request removal of some domain (with re
 
 **Specifically, please provide a screenshot in your PR of a page where one can generate a disposable email address which uses that domain.**
 
-Add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @, unless they use public suffix, in which case include the 3rd level domain), then run [maintain.sh](maintain.sh). The shell script will help you convert uppercase to lowercase, sort and remove duplicates.
+Add new disposable domains directly into [disposable_email_blocklist.conf](disposable_email_blocklist.conf) in the same format (only second level domains on new line without @, unless they use public suffix, in which case include the 3rd level domain), then run:
 
-You can also use the `verify.py` script to validate entries extensively, including against public suffix lists. Adding `--fix` parameter will attempt to fix all found issues in place, see the [verify.py](verify.py) for more guidance.
+```bash
+# Create and activate a virtual environment (recommended)
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Validate and auto-fix the blocklist
+python verify.py --fix
+```
+
+This will automatically fix formatting issues (lowercase, sorting, duplicates) and validate against public suffix rules. The older [maintain.sh](maintain.sh) script is deprecated — it only does basic lowercase/sort/uniq without PSL validation.
 
 License
 =======
