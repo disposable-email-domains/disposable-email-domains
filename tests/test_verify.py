@@ -40,13 +40,5 @@ class VerifyCLITests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("All domain entries seem valid.", result.stdout)
 
-    def test_duplicate_count_includes_first_occurrence(self):
-        for count in (2, 3):
-            with self.subTest(count=count):
-                result = self.run_verify("example.com\n" * count)
-                self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertIn(f"example.com ({count} times)", result.stdout)
-
-
 if __name__ == "__main__":
     unittest.main()

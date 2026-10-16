@@ -232,7 +232,7 @@ def main():
     if duplicates:
         print(f"The following {len(duplicates)} entries appear multiple times:")
         for line in sorted(set(duplicates)):
-            count = duplicates.count(line) + 1
+            count = duplicates.count(line)
             print(f"  * {line} ({count} times)")
 
     if unsorted:
