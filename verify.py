@@ -198,7 +198,7 @@ def main():
     with open("publicsuffixlist.local", "r") as psl_local_file:
         psl_local = set(line.strip() for line in psl_local_file if line.strip())
 
-    with open("public_suffix_list.dat", "r") as latest:
+    with open("public_suffix_list.dat", "r", encoding="utf-8") as latest:
         psl = PublicSuffixList(latest)
 
     public_suffixes = check_for_public_suffixes(blocklist, psl, psl_local)
