@@ -18,13 +18,13 @@ HOW TO RUN
 Local Mode (with screenshots for new domains):
     cd /path/to/disposable-email-domains
     source venv/bin/activate  # if using virtual environment
-    python script/discover_new_domains.py
+    python scripts/discover_new_domains.py
 
 Custom blocklist file:
-    python script/discover_new_domains.py --blocklist-file path/to/blocklist.txt
+    python scripts/discover_new_domains.py --blocklist-file path/to/blocklist.txt
 
 CI Mode (logging only, no screenshots):
-    CI=true python script/discover_new_domains.py
+    CI=true python scripts/discover_new_domains.py
 
 ================================================================================
 ENVIRONMENT VARIABLES
