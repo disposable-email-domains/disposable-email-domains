@@ -579,10 +579,10 @@ def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool
     """Check if the domain is a public suffix"""
     return (psl.publicsuffix(domain) == domain) or (domain in psl_local)
 
-class MailTmFetcher(DomainFetcher):
-    """Fetcher for 'mail.tm' disposable email domains, and for services that serve the same API"""
+class MailTmApiFetcher(DomainFetcher):
+    """Base fetcher for services that serve the mail.tm domains API"""
 
-    def __init__(self, name: str = "Mail.tm", url: str = "https://api.mail.tm/domains", status_key: str = "isActive"):
+    def __init__(self, name: str, url: str, status_key: str):
         super().__init__(name)
         self.url = url
         # The field that marks a domain usable: mail.tm sends `isActive`, other
@@ -590,7 +590,7 @@ class MailTmFetcher(DomainFetcher):
         self.status_key = status_key
 
     def fetch(self) -> Set[str]:
-        """Fetch active domains from the mail.tm public domains API (paginated)"""
+        """Fetch active domains from a mail.tm-style public domains API (paginated)"""
         domains = set()
         page_size = None
         try:
@@ -624,7 +624,14 @@ class MailTmFetcher(DomainFetcher):
         return domains
 
 
-class DuckMailFetcher(MailTmFetcher):
+class MailTmFetcher(MailTmApiFetcher):
+    """Fetcher for 'mail.tm' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Mail.tm", "https://api.mail.tm/domains", "isActive")
+
+
+class DuckMailFetcher(MailTmApiFetcher):
     """Fetcher for 'duckmail sbs' disposable email domains
 
     DuckMail serves the domains offered under "Add mailbox" -> "Custom create" ->
