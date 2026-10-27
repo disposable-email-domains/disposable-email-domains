@@ -579,15 +579,18 @@ def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool
     """Check if the domain is a public suffix"""
     return (psl.publicsuffix(domain) == domain) or (domain in psl_local)
 
-class MailTmFetcher(DomainFetcher):
-    """Fetcher for 'mail.tm' disposable email domains"""
+class MailTmApiFetcher(DomainFetcher):
+    """Base fetcher for services that serve the mail.tm domains API"""
 
-    def __init__(self):
-        super().__init__("Mail.tm")
-        self.url = "https://api.mail.tm/domains"
+    def __init__(self, name: str, url: str, status_key: str):
+        super().__init__(name)
+        self.url = url
+        # The field that marks a domain usable: mail.tm sends `isActive`, other
+        # services running its API may send a different flag (DuckMail: `isVerified`)
+        self.status_key = status_key
 
     def fetch(self) -> Set[str]:
-        """Fetch active domains from the mail.tm public domains API (paginated)"""
+        """Fetch active domains from a mail.tm-style public domains API (paginated)"""
         domains = set()
         page_size = None
         try:
@@ -604,7 +607,7 @@ class MailTmFetcher(DomainFetcher):
                 for entry in member:
                     if not isinstance(entry, dict):
                         continue
-                    if entry.get("isActive") is not True:
+                    if entry.get(self.status_key) is not True:
                         continue
                     domain = entry.get("domain")
                     if isinstance(domain, str) and domain:
@@ -621,6 +624,25 @@ class MailTmFetcher(DomainFetcher):
         return domains
 
 
+class MailTmFetcher(MailTmApiFetcher):
+    """Fetcher for 'mail.tm' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Mail.tm", "https://api.mail.tm/domains", "isActive")
+
+
+class DuckMailFetcher(MailTmApiFetcher):
+    """Fetcher for 'duckmail sbs' disposable email domains
+
+    DuckMail serves the domains offered under "Add mailbox" -> "Custom create" ->
+    "Select Domain" through a mail.tm-compatible API, with `isVerified` in place
+    of `isActive`.
+    """
+
+    def __init__(self):
+        super().__init__("DuckMail", "https://api.duckmail.sbs/domains", "isVerified")
+
+
 # Registry of all domain fetchers
 FETCHERS = [
     YopmailFetcher(),
@@ -633,6 +655,7 @@ FETCHERS = [
     CyberTempFetcher(),
     TempMailFetcher(),
     MailTmFetcher(),
+    DuckMailFetcher(),
     TempMailIOFetcher(),
     # Example: AnotherFetcher(),
 ]
