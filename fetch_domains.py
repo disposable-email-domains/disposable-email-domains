@@ -521,6 +521,47 @@ class TempMailIOFetcher(DomainFetcher):
         return domains
 
 
+class ThrowawayFetcher(DomainFetcher):
+    """Fetcher for 'throwaway io' disposable email domains.
+
+    throwaway.io lists its whole domain pool at a public JSON endpoint:
+    {"status": true, "data": {"domains": ["example.xyz", ...]}}
+    """
+
+    def __init__(self):
+        super().__init__("Throwaway")
+        self.url = "https://throwaway.io/api/ai/v1/domains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from the throwaway.io domains API"""
+        try:
+            # The server answers 403 to requests' default User-Agent
+            # (python-requests/x.y), so send one that names this project.
+            response = get(self.url, headers={"User-Agent": "disposable-email-domains fetcher"}, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        entries = data.get("data", {}).get("domains") if isinstance(data, dict) else None
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, str) and entry.strip():
+                    domains.add(entry.lower().strip())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -657,6 +698,7 @@ FETCHERS = [
     MailTmFetcher(),
     DuckMailFetcher(),
     TempMailIOFetcher(),
+    ThrowawayFetcher(),
     # Example: AnotherFetcher(),
 ]
 
