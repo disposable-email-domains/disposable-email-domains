@@ -729,6 +729,42 @@ class TempFastMailFetcher(DomainFetcher):
         return domains
 
 
+class TenMinuteMailNetFetcher(DomainFetcher):
+    """Fetcher for '10minutemail net' disposable email domains.
+
+    The homepage pre-generates an address into <input id="fe_text" value="name@example.com">.
+    """
+
+    def __init__(self):
+        super().__init__("10MinuteMail.net")
+        self.url = "https://10minutemail.net/"
+
+    def fetch(self) -> Set[str]:
+        """Fetch the domain of the address generated on the 10minutemail.net homepage"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        soup = BeautifulSoup(response.text, "html.parser")
+        field = soup.find("input", id="fe_text")
+        value = (field.get("value") or "") if field else ""
+        if "@" in value:
+            domain = value.rsplit("@", 1)[1].strip().lower()
+            if domain:
+                domains.add(domain)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -870,6 +906,7 @@ FETCHERS = [
     Mail123Fetcher(),
     CatchMailFetcher(),
     TempFastMailFetcher(),
+    TenMinuteMailNetFetcher(),
     # Example: AnotherFetcher(),
 ]
 
