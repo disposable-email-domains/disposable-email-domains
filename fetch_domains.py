@@ -607,6 +607,45 @@ class TempMailCloudFetcher(DomainFetcher):
         return domains
 
 
+class Mail123Fetcher(DomainFetcher):
+    """Fetcher for 'mail123 fr' disposable email domains.
+
+    mail123.fr lists its domain pool at a public JSON endpoint:
+    {"success": true, "domains": ["mail123.fr", ...], "primary": "mail123.fr", ...}
+    """
+
+    def __init__(self):
+        super().__init__("Mail123")
+        self.url = "https://mail123.fr/api/v1/domains"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from the mail123.fr domains API"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        entries = data.get("domains") if isinstance(data, dict) else None
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, str) and entry.strip():
+                    domains.add(entry.lower().strip())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -745,6 +784,7 @@ FETCHERS = [
     TempMailIOFetcher(),
     ThrowawayFetcher(),
     TempMailCloudFetcher(),
+    Mail123Fetcher(),
     # Example: AnotherFetcher(),
 ]
 
