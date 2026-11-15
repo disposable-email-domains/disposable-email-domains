@@ -562,6 +562,51 @@ class ThrowawayFetcher(DomainFetcher):
         return domains
 
 
+class TempMailCloudFetcher(DomainFetcher):
+    """Fetcher for 'tempmail cloud' disposable email domains.
+
+    tempmail.cloud publishes its domain pool in its public app config:
+    {"domains": [{"domain": "example.store", "active": true, "privateOwnerId": null, ...}, ...]}
+    """
+
+    def __init__(self):
+        super().__init__("TempMail.cloud")
+        self.url = "https://tempmail.cloud/api/config"
+
+    def fetch(self) -> Set[str]:
+        """Fetch active public domains from the tempmail.cloud config API"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        try:
+            data = response.json()
+        except Exception as e:
+            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        entries = data.get("domains") if isinstance(data, dict) else None
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("active") is not True:
+                    continue
+                # Skip domains a user has claimed privately; only the shared pool is disposable for sure
+                if entry.get("privateOwnerId"):
+                    continue
+                domain = entry.get("domain")
+                if isinstance(domain, str) and domain.strip():
+                    domains.add(domain.lower().strip())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -699,6 +744,7 @@ FETCHERS = [
     DuckMailFetcher(),
     TempMailIOFetcher(),
     ThrowawayFetcher(),
+    TempMailCloudFetcher(),
     # Example: AnotherFetcher(),
 ]
 
