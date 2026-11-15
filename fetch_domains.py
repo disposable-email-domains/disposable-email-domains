@@ -10,7 +10,13 @@ from typing import Set
 
 from bs4 import BeautifulSoup
 from requests import get, post
-from publicsuffixlist import PublicSuffixList
+
+from domain_rules import (
+    download_public_suffix_list,
+    is_public_suffix,
+    is_valid_level_domain,
+    load_local_suffixes,
+)
 
 
 def extract_domains_from_text(text: str) -> Set[str]:
@@ -1041,29 +1047,6 @@ def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: 
     return len(missing)
 
 
-def is_valid_level_domain(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
-    """Check if the domain is a valid-level domain"""
-    parts = domain.split('.')
-    public_valid = local_valid = False
-    if len(psl.privateparts(domain)) == 1:
-        public_valid = True
-    for i in range(len(parts)):
-        suffix = '.'.join(parts[i:])
-        if suffix in psl_local:
-            private_parts = parts[:i]
-            if len(private_parts) == 1:
-                local_valid = True
-                break
-    if public_valid or local_valid:
-        return True
-    else:
-        return False
-
-
-def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
-    """Check if the domain is a public suffix"""
-    return (psl.publicsuffix(domain) == domain) or (domain in psl_local)
-
 class MailTmApiFetcher(DomainFetcher):
     """Base fetcher for services that serve the mail.tm domains API"""
 
@@ -1161,15 +1144,11 @@ FETCHERS = [
 def main():
     """Main function to run all registered domain fetchers"""
     blocklist_file = "disposable_email_blocklist.conf"
-    with open("publicsuffixlist.local", "r") as psl_local_file:
-        psl_local = set(line.strip() for line in psl_local_file if line.strip())
+    psl_local = load_local_suffixes()
 
-    psl = None
     # Load the public suffix list once, to filter out subdomains
     try:
-        resp = get("https://publicsuffix.org/list/public_suffix_list.dat", timeout=30)
-        resp.raise_for_status()
-        psl = PublicSuffixList(resp.text.splitlines())
+        psl = download_public_suffix_list()
     except Exception as e:
         print(f"Error loading Public Suffix List: {e}", file=sys.stderr)
         sys.exit(1)

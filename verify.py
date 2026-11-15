@@ -9,45 +9,19 @@ Usage:
 
 import argparse
 import sys
-from collections import Counter
 
-from publicsuffixlist import PublicSuffixList
-from requests import get
+from domain_rules import (
+    download_public_suffix_list,
+    is_public_suffix,
+    is_valid_level_domain,
+    load_local_suffixes,
+)
 
 
 blocklist = "disposable_email_blocklist.conf"
 
-files = {
-    filename: open(filename).read().splitlines() for filename in [blocklist]
-}
-
-
-def download_suffixes():
-    with open("public_suffix_list.dat", "wb") as file:
-        response = get("https://publicsuffix.org/list/public_suffix_list.dat")
-        file.write(response.content)
-
-
-def is_public_suffix(domain, psl, psl_local):
-    """Check if domain is a public suffix from either source."""
-    if psl.publicsuffix(domain) == domain:
-        return True
-    return domain in psl_local
-
-
-def is_valid_level_domain(domain, psl, psl_local):
-    """Check if domain has valid level (second-level or valid third-level)."""
-    parts = domain.split('.')
-    private_parts = psl.privateparts(domain)
-    if private_parts and len(private_parts) == 1:
-        return True
-    for i in range(len(parts)):
-        suffix = '.'.join(parts[i:])
-        if suffix in psl_local:
-            private_parts = parts[:i]
-            if len(private_parts) == 1:
-                return True
-    return False
+# Filled in by main(), so importing this module has no side effects
+files = {}
 
 
 def check_for_public_suffixes(filename, psl, psl_local):
@@ -193,13 +167,11 @@ def main():
     parser.add_argument('--fix', action='store_true', help='Auto-fix issues and write corrected file')
     args = parser.parse_args()
 
-    download_suffixes()
+    with open(blocklist) as blocklist_file:
+        files[blocklist] = blocklist_file.read().splitlines()
 
-    with open("publicsuffixlist.local", "r") as psl_local_file:
-        psl_local = set(line.strip() for line in psl_local_file if line.strip())
-
-    with open("public_suffix_list.dat", "r", encoding="utf-8") as latest:
-        psl = PublicSuffixList(latest)
+    psl = download_public_suffix_list(save_to="public_suffix_list.dat")
+    psl_local = load_local_suffixes()
 
     public_suffixes = check_for_public_suffixes(blocklist, psl, psl_local)
     invalid_levels = check_for_invalid_level_domains(blocklist, psl, psl_local)
