@@ -795,6 +795,38 @@ class DisposableMailFetcher(DomainFetcher):
         return domains
 
 
+class FakeMailGeneratorFetcher(DomainFetcher):
+    """Fetcher for 'fakemailgenerator com' disposable email domains.
+
+    The homepage lists all domains in the dropdown next to #domain-select:
+    <ul class="dropdown-menu"><a href="#">@example.com</a>...</ul>
+    """
+
+    def __init__(self):
+        super().__init__("FakeMailGenerator")
+        self.url = "https://www.fakemailgenerator.com/"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from the fakemailgenerator.com domain dropdown"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        soup = BeautifulSoup(response.text, "html.parser")
+        for link in soup.select("ul.dropdown-menu a"):
+            text = link.get_text(strip=True).lower()
+            if text.startswith("@") and "." in text:
+                domains.add(text[1:])
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
 
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
@@ -939,6 +971,7 @@ FETCHERS = [
     TempFastMailFetcher(),
     TenMinuteMailNetFetcher(),
     DisposableMailFetcher(),
+    FakeMailGeneratorFetcher(),
     # Example: AnotherFetcher(),
 ]
 
