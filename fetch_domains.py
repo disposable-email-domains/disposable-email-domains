@@ -952,8 +952,9 @@ class USMailFetcher(DomainFetcher):
         return domains
 
 
-class Email_FakeFetcher(DomainFetcher):
-    """Fetcher for `email-fake com` disposable email domains.""""
+class EmailFakeFetcher(DomainFetcher):
+    """Fetcher for 'email-fake com' disposable email domains."""
+
     def __init__(self):
         super().__init__("Email-Fake")
         self.url = "https://email-fake.com"
@@ -1152,7 +1153,7 @@ FETCHERS = [
     AnonymMailFetcher(),
     MailBlinkerFetcher(),
     USMailFetcher(),
-    Email_FakeFetcher(),
+    EmailFakeFetcher(),
     # Example: AnotherFetcher(),
 ]
 
