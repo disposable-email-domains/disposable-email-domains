@@ -189,7 +189,7 @@ private static bool IsBlocklisted(string domain) => _emailBlockList.Value.Contai
 ...
 
 var addr = new MailAddress(email);
-if (IsBlocklisted(addr.Host)))
+if (IsBlocklisted(addr.Host))
   throw new ApplicationException("Email is blocklisted.");
 ```
 
