@@ -828,6 +828,50 @@ class FakeMailGeneratorFetcher(DomainFetcher):
         return domains
 
 
+class AnonymMailFetcher(DomainFetcher):
+    """Fetcher for 'anonymmail net' disposable email domains.
+
+    Each homepage load generates an address on a random domain from the pool,
+    shown as <b class="email">name@example.com</b>, so the pool is sampled.
+    """
+
+    def __init__(self, attempts: int = 25):
+        super().__init__("AnonymMail")
+        self.url = "https://anonymmail.net/"
+        self.attempts = attempts
+
+    def fetch(self) -> Set[str]:
+        """Collect domains by loading the anonymmail.net homepage several times"""
+        domains = set()
+        failures = 0
+        for _ in range(self.attempts):
+            try:
+                response = get(self.url, timeout=30)
+                response.raise_for_status()
+            except Exception as e:
+                failures += 1
+                print(f"Error fetching {self.name} page: {e}", file=sys.stderr)
+                # Give up early if the site is down or blocking us
+                if failures >= 3 and not domains:
+                    break
+                continue
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            for tag in soup.find_all(class_="email"):
+                text = tag.get_text(strip=True)
+                if "@" in text:
+                    domain = text.rsplit("@", 1)[1].strip().lower()
+                    if domain:
+                        domains.add(domain)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -972,6 +1016,7 @@ FETCHERS = [
     TenMinuteMailNetFetcher(),
     DisposableMailFetcher(),
     FakeMailGeneratorFetcher(),
+    AnonymMailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
