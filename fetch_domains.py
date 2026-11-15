@@ -913,6 +913,44 @@ class MailBlinkerFetcher(DomainFetcher):
         return domains
 
 
+class USMailFetcher(DomainFetcher):
+    """Fetcher for 'usmail one' disposable email domains.
+
+    usmail.one (redirects to 1mail.lt) renders its domain picker server-side:
+    <select id="name_domain"><optgroup label="Free Domains"><option value="example.com">...
+    """
+
+    def __init__(self):
+        super().__init__("USMail")
+        self.url = "https://usmail.one/"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from the usmail.one domain picker"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        soup = BeautifulSoup(response.text, "html.parser")
+        select = soup.find("select", id="name_domain")
+        if select:
+            for option in select.find_all("option"):
+                # Only the free groups; premium/paid domains are not handed out for free
+                group = option.find_parent("optgroup")
+                if group and "free" not in (group.get("label") or "").lower():
+                    continue
+                value = (option.get("value") or "").strip().lower()
+                if "." in value:
+                    domains.add(value)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
 
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
@@ -1060,6 +1098,7 @@ FETCHERS = [
     FakeMailGeneratorFetcher(),
     AnonymMailFetcher(),
     MailBlinkerFetcher(),
+    USMailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
