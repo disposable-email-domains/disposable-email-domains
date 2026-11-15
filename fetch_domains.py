@@ -646,6 +646,47 @@ class Mail123Fetcher(DomainFetcher):
         return domains
 
 
+class CatchMailFetcher(DomainFetcher):
+    """Fetcher for 'catchmail io' disposable email domains.
+
+    catchmail.io has no public domains endpoint; the homepage renders the
+    domain picker server-side as <select><option value="example.com">...,
+    and also embeds the same list in the Next.js payload as
+    {"domains":[{"domain":"example.com"},...]}.
+    """
+
+    def __init__(self):
+        super().__init__("CatchMail")
+        self.url = "https://catchmail.io/"
+
+    def fetch(self) -> Set[str]:
+        """Fetch domains from the catchmail.io homepage domain picker"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        soup = BeautifulSoup(response.text, "html.parser")
+        for select in soup.find_all("select"):
+            for option in select.find_all("option"):
+                value = (option.get("value") or option.get_text() or "").strip().lower()
+                if "." in value:
+                    domains.add(value)
+
+        # Fallback: the Next.js flight payload (quotes may be backslash-escaped)
+        if not domains:
+            for match in re.findall(r'\\?"domain\\?":\\?"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\\?"', response.text):
+                domains.add(match.lower())
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -785,6 +826,7 @@ FETCHERS = [
     ThrowawayFetcher(),
     TempMailCloudFetcher(),
     Mail123Fetcher(),
+    CatchMailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
