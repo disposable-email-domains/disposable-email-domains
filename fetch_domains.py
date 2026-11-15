@@ -870,6 +870,48 @@ class AnonymMailFetcher(DomainFetcher):
         return domains
 
 
+class MailBlinkerFetcher(DomainFetcher):
+    """Fetcher for 'mailblinker com' disposable email domains.
+
+    Each page load generates an address on a random domain from the pool,
+    shown as <span id="mail_address">name@example.com</span>, so the pool is sampled.
+    """
+
+    def __init__(self, attempts: int = 10):
+        super().__init__("MailBlinker")
+        # The bare domain answers with a meta-refresh to /en
+        self.url = "https://mailblinker.com/en"
+        self.attempts = attempts
+
+    def fetch(self) -> Set[str]:
+        """Collect domains by loading the mailblinker.com page several times"""
+        domains = set()
+        failures = 0
+        for _ in range(self.attempts):
+            try:
+                response = get(self.url, timeout=30)
+                response.raise_for_status()
+            except Exception as e:
+                failures += 1
+                print(f"Error fetching {self.name} page: {e}", file=sys.stderr)
+                # Give up early if the site is down or blocking us
+                if failures >= 3 and not domains:
+                    break
+                continue
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            tag = soup.find(id="mail_address")
+            text = tag.get_text(strip=True) if tag else ""
+            if "@" in text:
+                domain = text.rsplit("@", 1)[1].strip().lower()
+                if domain:
+                    domains.add(domain)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
 
 
 def load_existing_domains(filename: str) -> Set[str]:
@@ -1017,6 +1059,7 @@ FETCHERS = [
     DisposableMailFetcher(),
     FakeMailGeneratorFetcher(),
     AnonymMailFetcher(),
+    MailBlinkerFetcher(),
     # Example: AnotherFetcher(),
 ]
 
