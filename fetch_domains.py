@@ -763,6 +763,37 @@ class TenMinuteMailNetFetcher(DomainFetcher):
         return domains
 
 
+class DisposableMailFetcher(DomainFetcher):
+    """Fetcher for 'disposablemail com' disposable email domains.
+
+    The homepage shows the mailbox domain in a read-only <input value="@example.com">.
+    """
+
+    def __init__(self):
+        super().__init__("DisposableMail")
+        self.url = "https://www.disposablemail.com/"
+
+    def fetch(self) -> Set[str]:
+        """Fetch the domain shown on the disposablemail.com homepage"""
+        try:
+            response = get(self.url, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            return set()
+
+        domains = set()
+        soup = BeautifulSoup(response.text, "html.parser")
+        for field in soup.find_all("input"):
+            value = (field.get("value") or "").strip().lower()
+            if value.startswith("@") and "." in value:
+                domains.add(value[1:])
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+
+        return domains
+
 
 
 def load_existing_domains(filename: str) -> Set[str]:
@@ -907,6 +938,7 @@ FETCHERS = [
     CatchMailFetcher(),
     TempFastMailFetcher(),
     TenMinuteMailNetFetcher(),
+    DisposableMailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
