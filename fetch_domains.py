@@ -687,6 +687,48 @@ class CatchMailFetcher(DomainFetcher):
         return domains
 
 
+class TempFastMailFetcher(DomainFetcher):
+    """Fetcher for 'tempfastmail com' disposable email domains.
+
+    tempfastmail.com has no domain list; each POST to /api/email-box creates a
+    mailbox on a random domain from its pool:
+    {"email": "name@example.com", "uuid": "..."}
+    so the pool is collected by sampling several mailboxes.
+    """
+
+    def __init__(self, attempts: int = 20):
+        super().__init__("TempFastMail")
+        self.url = "https://tempfastmail.com/api/email-box"
+        self.attempts = attempts
+
+    def fetch(self) -> Set[str]:
+        """Collect domains by creating a number of mailboxes"""
+        domains = set()
+        failures = 0
+        for _ in range(self.attempts):
+            try:
+                response = post(self.url, json={}, timeout=15)
+                response.raise_for_status()
+                email = response.json().get("email")
+            except Exception as e:
+                failures += 1
+                print(f"Error fetching {self.name} mailbox: {e}", file=sys.stderr)
+                # Give up early if the service is down or blocking us
+                if failures >= 3 and not domains:
+                    break
+                continue
+
+            if isinstance(email, str) and "@" in email:
+                domain = email.rsplit("@", 1)[1].strip().lower()
+                if domain:
+                    domains.add(domain)
+
+        if not domains:
+            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
+
+        return domains
+
+
 def load_existing_domains(filename: str) -> Set[str]:
     """Load existing domains from blocklist file"""
     try:
@@ -827,6 +869,7 @@ FETCHERS = [
     TempMailCloudFetcher(),
     Mail123Fetcher(),
     CatchMailFetcher(),
+    TempFastMailFetcher(),
     # Example: AnotherFetcher(),
 ]
 
