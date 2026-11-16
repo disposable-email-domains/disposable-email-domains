@@ -8,7 +8,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from http.cookiejar import DefaultCookiePolicy
-from typing import Any, Iterable, Optional, Set
+from typing import Any, Iterable, List, Optional, Set, Tuple
 
 import requests
 from bs4 import BeautifulSoup
@@ -82,6 +82,30 @@ def domain_of(address: Any) -> Optional[str]:
     return None
 
 
+def describe_error(error: Optional[BaseException]) -> str:
+    """A short, single-line description of a fetch error, for logs and the stats table.
+
+    requests' own messages repeat the whole URL and connection pool details,
+    which buries the actual cause.
+    """
+    if error is None:
+        return "unknown error"
+    if isinstance(error, requests.HTTPError) and error.response is not None:
+        return f"HTTP {error.response.status_code}"
+    if isinstance(error, requests.exceptions.RetryError):
+        return "server errors persisted after retries"
+    if isinstance(error, requests.Timeout):
+        return "timed out"
+    if isinstance(error, requests.ConnectionError):
+        return "connection failed"
+    if isinstance(error, requests.exceptions.JSONDecodeError):
+        return "invalid JSON response"
+    message = " ".join(str(error).split())
+    if not isinstance(error, FetchError):
+        message = f"{type(error).__name__}: {message}"
+    return message if len(message) <= 160 else message[:157] + "..."
+
+
 def strings(items: Any) -> Iterable[str]:
     """Yield the string entries of a JSON list; anything else yields nothing."""
     if isinstance(items, list):
@@ -93,21 +117,30 @@ def strings(items: Any) -> Iterable[str]:
 # --- Base classes ----------------------------------------------------------
 
 
+class FetchError(Exception):
+    """A source failed in a way worth reporting, rather than with a raw network/parse error."""
+
+
 class DomainFetcher:
     """Base class for domain fetchers.
 
     Subclasses implement collect(), returning the raw domains a source offers.
-    fetch() normalizes them, drops anything that isn't a hostname, and turns
-    errors and empty results into warnings, so one broken source never stops
-    the run.
+    fetch() normalizes them and drops anything that isn't a hostname.
+
+    Failures propagate: network, HTTP and parse errors, and a source that yields
+    no domains at all, raise from fetch(), and main() records them per source.
+    Problems that still left a usable result (some sampling attempts failed,
+    pagination broke off part way) are recorded with warn() and end up in
+    self.warnings.
     """
 
-    # Shown when a source yields nothing; override to point at a likelier cause
+    # Added to the error when a source yields nothing; override to point at a likelier cause
     empty_hint = "The page structure may have changed."
 
     def __init__(self, name: str, url: str = ""):
         self.name = name
         self.url = url
+        self.warnings: List[str] = []
 
     def get_name(self) -> str:
         """Get the name of this fetcher"""
@@ -117,18 +150,19 @@ class DomainFetcher:
         """Return the domains offered by the source. Must be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement collect()")
 
-    def fetch(self) -> Set[str]:
-        """Fetch, normalize and sanity-check the source's domains"""
-        try:
-            raw = self.collect()
-            domains = {d.strip().lower() for d in raw if isinstance(d, str)}
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            domains = set()
-        domains = {d for d in domains if HOSTNAME_RE.match(d)}
+    def warn(self, message: str) -> None:
+        """Record a problem that didn't stop the source from producing domains."""
+        self.warnings.append(message)
+        print(f"Warning ({self.name}): {message}", file=sys.stderr)
 
+    def fetch(self) -> Set[str]:
+        """Fetch, normalize and sanity-check the source's domains; raises on failure"""
+        self.warnings = []
+        raw = self.collect()
+        domains = {d.strip().lower() for d in raw if isinstance(d, str)}
+        domains = {d for d in domains if HOSTNAME_RE.match(d)}
         if not domains:
-            print(f"Warning: No domains found from {self.name}. {self.empty_hint}", file=sys.stderr)
+            raise FetchError(f"No domains found. {self.empty_hint}")
         return domains
 
     # HTTP helpers: all raise on network and HTTP errors
@@ -195,6 +229,9 @@ class SamplingFetcher(DomainFetcher):
     `max_failures`: after this many failed attempts without a single domain,
     the sequential loop gives up (the site is down or blocking us). None keeps
     trying for all attempts.
+
+    Failed attempts become a warning when other attempts still found domains,
+    and an error when none did.
     """
 
     attempts = 10
@@ -205,43 +242,60 @@ class SamplingFetcher(DomainFetcher):
     def sample_once(self) -> Iterable[str]:
         raise NotImplementedError("Subclasses must implement sample_once()")
 
-    def _try_once(self, attempt: int) -> Optional[Set[str]]:
-        """One sample; None on failure. StopSampling propagates."""
+    def _try_once(self, attempt: int) -> Tuple[Optional[Set[str]], Optional[Exception]]:
+        """One sample: (domains, None) on success, (None, error) on failure. StopSampling propagates."""
         try:
-            return set(self.sample_once())
+            return set(self.sample_once()), None
         except StopSampling:
             raise
         except Exception as e:
             print(f"Error sampling {self.name} (attempt {attempt + 1}): {e}", file=sys.stderr)
-            return None
+            return None, e
 
     def collect(self) -> Iterable[str]:
         domains: Set[str] = set()
+        failures = 0
+        tried = 0
+        last_error: Optional[Exception] = None
+        stopped: Optional[StopSampling] = None
 
         if self.workers > 1:
             with ThreadPoolExecutor(max_workers=self.workers) as executor:
                 try:
-                    for result in executor.map(self._try_once, range(self.attempts)):
+                    for result, error in executor.map(self._try_once, range(self.attempts)):
+                        tried += 1
+                        if error is not None:
+                            failures, last_error = failures + 1, error
                         domains.update(result or ())
                 except StopSampling as e:
-                    print(f"Stopped sampling {self.name}: {e}", file=sys.stderr)
-            return domains
-
-        failures = 0
-        for attempt in range(self.attempts):
-            if attempt and self.delay:
-                time.sleep(self.delay)
-            try:
-                result = self._try_once(attempt)
-            except StopSampling as e:
-                print(f"Stopped sampling {self.name}: {e}", file=sys.stderr)
-                break
-            if result is None:
-                failures += 1
-                if self.max_failures is not None and failures >= self.max_failures and not domains:
+                    stopped = e
+        else:
+            for attempt in range(self.attempts):
+                if attempt and self.delay:
+                    time.sleep(self.delay)
+                try:
+                    result, error = self._try_once(attempt)
+                except StopSampling as e:
+                    stopped = e
                     break
-                continue
-            domains.update(result)
+                tried += 1
+                if error is not None:
+                    failures, last_error = failures + 1, error
+                    if self.max_failures is not None and failures >= self.max_failures and not domains:
+                        break
+                    continue
+                domains.update(result)
+
+        if not domains:
+            if stopped is not None:
+                raise FetchError(f"Stopped sampling: {stopped}")
+            if last_error is not None:
+                raise FetchError(f"{failures}/{tried} attempts failed, last: {describe_error(last_error)}")
+        else:
+            if stopped is not None:
+                self.warn(f"Stopped sampling after {tried} attempt(s): {stopped}")
+            if failures:
+                self.warn(f"{failures}/{tried} attempts failed, last: {describe_error(last_error)}")
         return domains
 
 
@@ -316,8 +370,7 @@ class TinyhostFetcher(DomainFetcher):
             for page in range(1, 11):
                 data = self.get_json(params={"page": page, "limit": 50})
                 if not isinstance(data, dict) or not isinstance(data.get("domains"), list):
-                    print(f"Error: Malformed response from {self.name} while fetching domains.", file=sys.stderr)
-                    return domains
+                    raise FetchError(f"Malformed response on page {page}")
                 items = data["domains"]
                 if not items:
                     break
@@ -329,7 +382,10 @@ class TinyhostFetcher(DomainFetcher):
                 if duplicate_pages >= 4:
                     break
         except Exception as e:
-            print(f"Error fetching {self.name} domains (keeping {len(domains)} domain(s) collected so far): {e}", file=sys.stderr)
+            # Keep what earlier pages gave us; with nothing, it's a plain failure
+            if not domains:
+                raise
+            self.warn(f"Stopped after {len(domains)} domain(s): {describe_error(e)}")
         return domains
 
 
@@ -505,7 +561,10 @@ class MailTmApiFetcher(DomainFetcher):
                 if len(member) < page_size:
                     break
         except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
+            # Keep what earlier pages gave us; with nothing, it's a plain failure
+            if not domains:
+                raise
+            self.warn(f"Stopped after {len(domains)} domain(s): {describe_error(e)}")
         return domains
 
 
@@ -891,14 +950,17 @@ def main():
                 "added": added,
                 "raw": raw_count
             }
+            if fetcher.warnings:
+                stats[fetcher.get_name()]["warning"] = "; ".join(fetcher.warnings)
         except Exception as e:
-            print(f"Error processing {fetcher.get_name()}: {e}", file=sys.stderr)
+            error = describe_error(e)
+            print(f"Error processing {fetcher.get_name()}: {error}", file=sys.stderr)
             # Record failed fetcher with zero counts
             stats[fetcher.get_name()] = {
                 "found": 0,
                 "added": 0,
                 "raw": 0,
-                "error": str(e)
+                "error": error
             }
             continue
 
