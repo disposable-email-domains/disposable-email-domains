@@ -105,7 +105,7 @@ function isDisposableEmail($email, $blocklist_path = null) {
 }
 ```
 
-Alternatively check out Composer package https://github.com/elliotjreed/disposable-emails-filter-php.
+Alternatively check out Composer packages https://github.com/elliotjreed/disposable-emails-filter-php and https://github.com/moonetix/signup-guard (bundles this list with email normalization and sign-up risk scoring).
 
 ### Go
 
@@ -173,7 +173,7 @@ function isPermanentEmail(email) {
 }
 ```
 
-Alternatively check out NPM packages https://github.com/mziyut/disposable-email-domains-js (updated weekly) and https://www.npmjs.com/package/fakeout (updated daily).
+Alternatively check out NPM packages https://github.com/mziyut/disposable-email-domains-js (updated weekly), https://www.npmjs.com/package/fakeout (updated daily) and https://www.npmjs.com/package/@moonetix/signup-guard (bundles this list with email normalization and sign-up risk scoring).
 
 ### C#
 ```C#
