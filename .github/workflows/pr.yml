@@ -16,3 +16,7 @@ jobs:
         with:
           python-version: '3.x'
       - run: pip install -r requirements.txt && python verify.py
+      # Importing builds every fetcher in the FETCHERS registry, so a syntax or
+      # name error in fetch_domains.py fails here rather than in the daily run
+      - name: Check the fetcher scripts load
+        run: python -c "import fetch_domains, verify, domain_rules" && python -m py_compile scripts/generate_stats.py
