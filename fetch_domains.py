@@ -23,7 +23,12 @@ from domain_rules import (
 )
 
 
-USER_AGENT = "disposable-email-domains fetcher (+https://github.com/disposable-email-domains/disposable-email-domains)"
+# Some sites (generator.email, throwaway.io) reject requests' default
+# python-requests User-Agent outright
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+)
 # (connect, read) seconds: a host that doesn't accept the connection is given
 # up on quickly, a slow response still gets time
 DEFAULT_TIMEOUT = (10, 30)
@@ -40,6 +45,7 @@ def make_session() -> requests.Session:
     """
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
+    session.headers["Accept-Language"] = "en-US,en;q=0.9"
     session.cookies.set_policy(DefaultCookiePolicy(allowed_domains=[]))
     # Only idempotent methods are retried (urllib3's default), so a POST that
     # creates a mailbox is never sent twice by the retry logic
@@ -512,10 +518,6 @@ class TempMailFetcher(SamplingFetcher):
     delay = 2  # Wait between attempts, also after failures
     max_failures = None
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        ),
         "Content-Type": "application/json",
         "Accept": "application/json",
         "Origin": "https://temp-mail.org",
@@ -620,7 +622,7 @@ class ThrowawayFetcher(JsonApiFetcher):
 
     throwaway.io lists its whole domain pool at a public JSON endpoint:
     {"status": true, "data": {"domains": ["example.xyz", ...]}}
-    It answers 403 to requests' default User-Agent; the session's own one works.
+    It answers 403 to requests' default User-Agent; the session's browser one works.
     """
 
     def __init__(self):
