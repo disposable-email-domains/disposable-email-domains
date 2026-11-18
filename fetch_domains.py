@@ -24,7 +24,9 @@ from domain_rules import (
 
 
 USER_AGENT = "disposable-email-domains fetcher (+https://github.com/disposable-email-domains/disposable-email-domains)"
-DEFAULT_TIMEOUT = 30
+# (connect, read) seconds: a host that doesn't accept the connection is given
+# up on quickly, a slow response still gets time
+DEFAULT_TIMEOUT = (10, 30)
 
 # A plain ASCII hostname with at least one dot; anything else a source returns is noise
 HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")
@@ -42,7 +44,7 @@ def make_session() -> requests.Session:
     # Only idempotent methods are retried (urllib3's default), so a POST that
     # creates a mailbox is never sent twice by the retry logic
     retry = Retry(total=2, backoff_factor=1, status_forcelist=(500, 502, 503, 504), raise_on_status=False)
-    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=50)
+    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=10)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
@@ -260,15 +262,22 @@ class SamplingFetcher(DomainFetcher):
         stopped: Optional[StopSampling] = None
 
         if self.workers > 1:
+            # In batches of `workers`, so a dead or blocking site is given up
+            # on after a batch or two rather than after every attempt
             with ThreadPoolExecutor(max_workers=self.workers) as executor:
-                try:
-                    for result, error in executor.map(self._try_once, range(self.attempts)):
-                        tried += 1
-                        if error is not None:
-                            failures, last_error = failures + 1, error
-                        domains.update(result or ())
-                except StopSampling as e:
-                    stopped = e
+                for start in range(0, self.attempts, self.workers):
+                    batch = range(start, min(start + self.workers, self.attempts))
+                    try:
+                        for result, error in executor.map(self._try_once, batch):
+                            tried += 1
+                            if error is not None:
+                                failures, last_error = failures + 1, error
+                            domains.update(result or ())
+                    except StopSampling as e:
+                        stopped = e
+                        break
+                    if self.max_failures is not None and failures >= self.max_failures and not domains:
+                        break
         else:
             for attempt in range(self.attempts):
                 if attempt and self.delay:
@@ -450,11 +459,12 @@ class GeneratorEmailFetcher(SamplingFetcher):
     """Fetcher for 'generator email' disposable email domains.
 
     Each page load selects a random domain from the pool and embeds it in the
-    page's JS config as cur_domain:"...", so the pool is sampled concurrently.
+    page's JS config as cur_domain:"...", so the pool is sampled concurrently,
+    a few requests at a time.
     """
 
     attempts = 50
-    workers = 50
+    workers = 5
 
     def __init__(self):
         super().__init__("GeneratorEmail", "https://generator.email/")
@@ -878,29 +888,11 @@ def load_existing_domains(filename: str) -> Set[str]:
         return set()
 
 
-def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: str = "") -> int:
-    """Add new domains to the blocklist file"""
-    existing = load_existing_domains(filename)
-    missing = new_domains - existing
-
-    if not missing:
-        if source_name:
-            print(f"No new domains to add from {source_name}.")
-        else:
-            print("No new domains to add.")
-        return 0
-
-    print(f"Found {len(missing)} new domains to add from {source_name}:")
-    for domain in sorted(missing):
-        print(f"  + {domain}")
-
-    # Merge with existing and write back sorted alphabetically (case-insensitive)
-    merged = existing | set(d for d in missing if d)
+def write_blocklist(domains: Set[str], filename: str) -> None:
+    """Write the blocklist sorted alphabetically (case-insensitive), one domain per line"""
     with open(filename, 'w') as f:
-        for domain in sorted(merged, key=lambda s: s.lower()):
+        for domain in sorted(domains, key=str.lower):
             f.write(f"{domain}\n")
-
-    return len(missing)
 
 
 def main():
@@ -915,6 +907,9 @@ def main():
         print(f"Error loading Public Suffix List: {e}", file=sys.stderr)
         sys.exit(1)
 
+    existing = load_existing_domains(blocklist_file)
+    # Domains new to the blocklist, from all sources; written once at the end
+    new_domains: Set[str] = set()
     total_added = 0
     sources_processed = 0
     stats = {}  # Track statistics per fetcher
@@ -938,7 +933,17 @@ def main():
 
             added = 0
             if domains:
-                added = add_domains_to_blocklist(domains, blocklist_file, fetcher.get_name())
+                # A domain counts for the first source that brought it, as when
+                # each source was written to the file in turn
+                missing = domains - existing - new_domains
+                if missing:
+                    print(f"Found {len(missing)} new domains to add from {fetcher.get_name()}:")
+                    for domain in sorted(missing):
+                        print(f"  + {domain}")
+                else:
+                    print(f"No new domains to add from {fetcher.get_name()}.")
+                new_domains |= missing
+                added = len(missing)
                 total_added += added
                 sources_processed += 1
             else:
@@ -963,6 +968,9 @@ def main():
                 "error": error
             }
             continue
+
+    if new_domains:
+        write_blocklist(existing | new_domains, blocklist_file)
 
     # Write statistics to JSON file for workflow to consume
     with open("fetch_stats.json", "w") as f:
