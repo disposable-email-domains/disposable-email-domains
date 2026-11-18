@@ -5,12 +5,58 @@
 import json
 import re
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Set
+import time
+from concurrent.futures import ThreadPoolExecutor
+from http.cookiejar import DefaultCookiePolicy
+from typing import Any, Iterable, List, Optional, Set, Tuple
 
+import requests
 from bs4 import BeautifulSoup
-from requests import get, post
-from publicsuffixlist import PublicSuffixList
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from domain_rules import (
+    download_public_suffix_list,
+    is_public_suffix,
+    is_valid_level_domain,
+    load_local_suffixes,
+)
+
+
+# Some sites (generator.email, throwaway.io) reject requests' default
+# python-requests User-Agent outright
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+)
+# (connect, read) seconds: a host that doesn't accept the connection is given
+# up on quickly, a slow response still gets time
+DEFAULT_TIMEOUT = (10, 30)
+
+# A plain ASCII hostname with at least one dot; anything else a source returns is noise
+HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")
+
+
+def make_session() -> requests.Session:
+    """Session shared by all fetchers: keeps connections alive and retries transient errors.
+
+    Cookies are never stored. Several sources pick a new random domain per
+    visitor, and a remembered session cookie would pin them to one.
+    """
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    session.headers["Accept-Language"] = "en-US,en;q=0.9"
+    session.cookies.set_policy(DefaultCookiePolicy(allowed_domains=[]))
+    # Only idempotent methods are retried (urllib3's default), so a POST that
+    # creates a mailbox is never sent twice by the retry logic
+    retry = Retry(total=2, backoff_factor=1, status_forcelist=(500, 502, 503, 504), raise_on_status=False)
+    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=10)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+SESSION = make_session()
 
 
 def extract_domains_from_text(text: str) -> Set[str]:
@@ -37,261 +83,362 @@ def extract_domains_from_text(text: str) -> Set[str]:
     return domains
 
 
+def domain_of(address: Any) -> Optional[str]:
+    """Return the domain part of an email address, or None if it isn't one."""
+    if isinstance(address, str) and "@" in address:
+        return address.rsplit("@", 1)[1]
+    return None
+
+
+def describe_error(error: Optional[BaseException]) -> str:
+    """A short, single-line description of a fetch error, for logs and the stats table.
+
+    requests' own messages repeat the whole URL and connection pool details,
+    which buries the actual cause.
+    """
+    if error is None:
+        return "unknown error"
+    if isinstance(error, requests.HTTPError) and error.response is not None:
+        return f"HTTP {error.response.status_code}"
+    if isinstance(error, requests.exceptions.RetryError):
+        return "server errors persisted after retries"
+    if isinstance(error, requests.Timeout):
+        return "timed out"
+    if isinstance(error, requests.ConnectionError):
+        return "connection failed"
+    if isinstance(error, requests.exceptions.JSONDecodeError):
+        return "invalid JSON response"
+    message = " ".join(str(error).split())
+    if not isinstance(error, FetchError):
+        message = f"{type(error).__name__}: {message}"
+    return message if len(message) <= 160 else message[:157] + "..."
+
+
+def strings(items: Any) -> Iterable[str]:
+    """Yield the string entries of a JSON list; anything else yields nothing."""
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, str):
+                yield item
+
+
+# --- Base classes ----------------------------------------------------------
+
+
+class FetchError(Exception):
+    """A source failed in a way worth reporting, rather than with a raw network/parse error."""
+
+
 class DomainFetcher:
-    """Base class for domain fetchers"""
+    """Base class for domain fetchers.
 
-    def __init__(self, name: str):
+    Subclasses implement collect(), returning the raw domains a source offers.
+    fetch() normalizes them and drops anything that isn't a hostname.
+
+    Failures propagate: network, HTTP and parse errors, and a source that yields
+    no domains at all, raise from fetch(), and main() records them per source.
+    Problems that still left a usable result (some sampling attempts failed,
+    pagination broke off part way) are recorded with warn() and end up in
+    self.warnings.
+    """
+
+    # Added to the error when a source yields nothing; override to point at a likelier cause
+    empty_hint = "The page structure may have changed."
+
+    def __init__(self, name: str, url: str = ""):
         self.name = name
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the source. Must be implemented by subclasses."""
-        raise NotImplementedError("Subclasses must implement fetch()")
+        self.url = url
+        self.warnings: List[str] = []
 
     def get_name(self) -> str:
         """Get the name of this fetcher"""
         return self.name
 
+    def collect(self) -> Iterable[str]:
+        """Return the domains offered by the source. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement collect()")
 
-class YopmailFetcher(DomainFetcher):
-    """Fetcher for 'yopmail com' disposable email domains """
-
-    def __init__(self):
-        super().__init__("Yopmail")
-        self.url = "https://yopmail.com/en/domain?d=list"
+    def warn(self, message: str) -> None:
+        """Record a problem that didn't stop the source from producing domains."""
+        self.warnings.append(message)
+        print(f"Warning ({self.name}): {message}", file=sys.stderr)
 
     def fetch(self) -> Set[str]:
-        """Fetch domains from Yopmail endpoint"""
+        """Fetch, normalize and sanity-check the source's domains; raises on failure"""
+        self.warnings = []
+        raw = self.collect()
+        domains = {d.strip().lower() for d in raw if isinstance(d, str)}
+        domains = {d for d in domains if HOSTNAME_RE.match(d)}
+        if not domains:
+            raise FetchError(f"No domains found. {self.empty_hint}")
+        return domains
+
+    # HTTP helpers: all raise on network and HTTP errors
+
+    def request(self, method: str, url: Optional[str] = None, **kwargs) -> requests.Response:
+        kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+        response = SESSION.request(method, url or self.url, **kwargs)
+        response.raise_for_status()
+        return response
+
+    def get(self, url: Optional[str] = None, **kwargs) -> requests.Response:
+        return self.request("GET", url, **kwargs)
+
+    def post(self, url: Optional[str] = None, **kwargs) -> requests.Response:
+        return self.request("POST", url, **kwargs)
+
+    def get_json(self, url: Optional[str] = None, **kwargs) -> Any:
+        return self.get(url, **kwargs).json()
+
+    def get_soup(self, url: Optional[str] = None, **kwargs) -> BeautifulSoup:
+        return BeautifulSoup(self.get(url, **kwargs).text, "html.parser")
+
+
+class JsonApiFetcher(DomainFetcher):
+    """A source whose domain list comes from one JSON endpoint.
+
+    Subclasses implement extract(), picking the domains out of the decoded JSON.
+    """
+
+    empty_hint = "The API response may have changed."
+
+    def collect(self) -> Iterable[str]:
+        return self.extract(self.get_json())
+
+    def extract(self, data: Any) -> Iterable[str]:
+        raise NotImplementedError("Subclasses must implement extract()")
+
+
+class HtmlFetcher(DomainFetcher):
+    """A source whose domains can be read off one HTML page.
+
+    Subclasses implement parse(), given the parsed page and its raw HTML.
+    """
+
+    def collect(self) -> Iterable[str]:
+        html = self.get().text
+        return self.parse(BeautifulSoup(html, "html.parser"), html)
+
+    def parse(self, soup: BeautifulSoup, html: str) -> Iterable[str]:
+        raise NotImplementedError("Subclasses must implement parse()")
+
+
+class StopSampling(Exception):
+    """Raised by sample_once() when the source is blocking us and further attempts are pointless."""
+
+
+class SamplingFetcher(DomainFetcher):
+    """A source that only reveals a random part of its pool per request.
+
+    Subclasses implement sample_once(), which makes one request and returns the
+    domains it revealed. collect() calls it `attempts` times, sequentially with
+    `delay` seconds between calls, or concurrently when `workers` > 1.
+
+    `max_failures`: after this many failed attempts without a single domain,
+    the sequential loop gives up (the site is down or blocking us). None keeps
+    trying for all attempts.
+
+    Failed attempts become a warning when other attempts still found domains,
+    and an error when none did.
+    """
+
+    attempts = 10
+    workers = 1
+    delay = 0.0
+    max_failures: Optional[int] = 3
+
+    def sample_once(self) -> Iterable[str]:
+        raise NotImplementedError("Subclasses must implement sample_once()")
+
+    def _try_once(self, attempt: int) -> Tuple[Optional[Set[str]], Optional[Exception]]:
+        """One sample: (domains, None) on success, (None, error) on failure. StopSampling propagates."""
         try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
+            return set(self.sample_once()), None
+        except StopSampling:
+            raise
         except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
+            print(f"Error sampling {self.name} (attempt {attempt + 1}): {e}", file=sys.stderr)
+            return None, e
 
-        # Parse HTML
-        soup = BeautifulSoup(response.text, "html.parser")
-        text = soup.get_text()
+    def collect(self) -> Iterable[str]:
+        domains: Set[str] = set()
+        failures = 0
+        tried = 0
+        last_error: Optional[Exception] = None
+        stopped: Optional[StopSampling] = None
 
-        # Extract domains from the text content
-        domains = extract_domains_from_text(text)
+        if self.workers > 1:
+            # In batches of `workers`, so a dead or blocking site is given up
+            # on after a batch or two rather than after every attempt
+            with ThreadPoolExecutor(max_workers=self.workers) as executor:
+                for start in range(0, self.attempts, self.workers):
+                    batch = range(start, min(start + self.workers, self.attempts))
+                    try:
+                        for result, error in executor.map(self._try_once, batch):
+                            tried += 1
+                            if error is not None:
+                                failures, last_error = failures + 1, error
+                            domains.update(result or ())
+                    except StopSampling as e:
+                        stopped = e
+                        break
+                    if self.max_failures is not None and failures >= self.max_failures and not domains:
+                        break
+        else:
+            for attempt in range(self.attempts):
+                if attempt and self.delay:
+                    time.sleep(self.delay)
+                try:
+                    result, error = self._try_once(attempt)
+                except StopSampling as e:
+                    stopped = e
+                    break
+                tried += 1
+                if error is not None:
+                    failures, last_error = failures + 1, error
+                    if self.max_failures is not None and failures >= self.max_failures and not domains:
+                        break
+                    continue
+                domains.update(result)
 
         if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
+            if stopped is not None:
+                raise FetchError(f"Stopped sampling: {stopped}")
+            if last_error is not None:
+                raise FetchError(f"{failures}/{tried} attempts failed, last: {describe_error(last_error)}")
+        else:
+            if stopped is not None:
+                self.warn(f"Stopped sampling after {tried} attempt(s): {stopped}")
+            if failures:
+                self.warn(f"{failures}/{tried} attempts failed, last: {describe_error(last_error)}")
         return domains
 
 
-class NoopmailFetcher(DomainFetcher):
-    """
-    Fetcher for 'noopmail org' disposable email domains.
+# --- Sources ---------------------------------------------------------------
+
+
+class YopmailFetcher(HtmlFetcher):
+    """Fetcher for 'yopmail com' disposable email domains"""
+
+    def __init__(self):
+        super().__init__("Yopmail", "https://yopmail.com/en/domain?d=list")
+
+    def parse(self, soup, html):
+        return extract_domains_from_text(soup.get_text())
+
+
+class NoopmailFetcher(SamplingFetcher):
+    """Fetcher for 'noopmail org' disposable email domains.
+
+    Each call to /api/rd returns a single random domain with expiration info.
+    The site has a small pool of ~17 domains, so 50 requests is enough.
 
     Blocks github IP range - run locally via vpn/proxy.
     """
 
-    def __init__(self):
-        super().__init__("Noopmail")
-        self.url = "https://noopmail.org/api/rd"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from Noopmail by polling the random domain endpoint"""
-        import time
-        domains = set()
-        try:
-            # Poll the /api/rd endpoint to collect domains
-            # Each call returns a single random domain with expiration info
-            # The site has a small pool of ~17 domains, so 50 requests is enough
-            for i in range(50):
-                try:
-                    response = get(self.url, timeout=10)
-                    response.raise_for_status()
-                    data = response.json()
-                    if isinstance(data, dict) and "dm" in data:
-                        domain = data["dm"].lower().strip()
-                        if domain:
-                            domains.add(domain)
-                    # Small delay to avoid rate limiting
-                    time.sleep(0.05)
-                except Exception:
-                    # Continue on individual request failures
-                    continue
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class GPTMailFetcher(DomainFetcher):
-    """Fetcher for `mail chatgpt org uk` disposable email domains"""
+    attempts = 50
+    delay = 0.05  # Small delay to avoid rate limiting
+    max_failures = None
 
     def __init__(self):
-        super().__init__("GPTMail")
-        self.url = "https://mail.chatgpt.org.uk/api/domains/status"
+        super().__init__("Noopmail", "https://noopmail.org/api/rd")
 
-    def fetch(self) -> Set[str]:
-        """Fetch domains from GPTMail domains status API"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
+    def sample_once(self):
+        data = self.get_json(timeout=10)
+        if isinstance(data, dict) and isinstance(data.get("dm"), str):
+            return [data["dm"]]
+        return []
 
-        # Parse JSON
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
 
-        domains = set()
-        if "success" in data and data["success"] and "data" in data:
-            domain_data = data["data"]
-            # Handle both list format and object with domains array
-            if isinstance(domain_data, list):
-                for entry in domain_data:
-                    if isinstance(entry, dict) and "domain_name" in entry:
-                        domain = entry["domain_name"].lower().strip()
-                        if domain:
-                            domains.add(domain)
-            elif isinstance(domain_data, dict) and "domains" in domain_data:
-                for entry in domain_data["domains"]:
-                    if isinstance(entry, dict) and "domain_name" in entry:
-                        domain = entry["domain_name"].lower().strip()
-                        if domain:
-                            domains.add(domain)
+class GPTMailFetcher(JsonApiFetcher):
+    """Fetcher for 'mail chatgpt org uk' disposable email domains"""
 
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+    def __init__(self):
+        super().__init__("GPTMail", "https://mail.chatgpt.org.uk/api/domains/status")
 
-        return domains
+    def extract(self, data):
+        if not isinstance(data, dict) or not data.get("success"):
+            return []
+        entries = data.get("data")
+        # Handle both list format and object with domains array
+        if isinstance(entries, dict):
+            entries = entries.get("domains")
+        if not isinstance(entries, list):
+            return []
+        return [e["domain_name"] for e in entries if isinstance(e, dict) and isinstance(e.get("domain_name"), str)]
+
 
 class TinyhostFetcher(DomainFetcher):
-    """Fetcher for `tinyhost shop` disposable email domains"""
+    """Fetcher for 'tinyhost shop' disposable email domains"""
 
     def __init__(self):
-        super().__init__("Tinyhost")
         # Public endpoint used by the site UI; /api/all-domains/ requires a token now
-        self.url = "https://tinyhost.shop/api/random-domains/"
+        super().__init__("Tinyhost", "https://tinyhost.shop/api/random-domains/")
 
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the Tinyhost public random domains API (paginated)"""
-        domains = set()
+    def collect(self):
+        """Sample the random domains API (paginated)"""
+        domains: Set[str] = set()
         duplicate_pages = 0
         try:
             # Each page returns a random selection from the pool, so sample
             # several pages per run; coverage accumulates across daily runs.
             for page in range(1, 11):
-                response = get(self.url, params={"page": page, "limit": 50}, timeout=30)
-                response.raise_for_status()
-                data = response.json()
+                data = self.get_json(params={"page": page, "limit": 50})
                 if not isinstance(data, dict) or not isinstance(data.get("domains"), list):
-                    print(f"Error: Malformed response from {self.name} while fetching domains.", file=sys.stderr)
-                    return domains
+                    raise FetchError(f"Malformed response on page {page}")
                 items = data["domains"]
-                new_domains = 0
-                for domain in items:
-                    if isinstance(domain, str) and domain:
-                        domain = domain.lower().strip()
-                        if domain not in domains:
-                            domains.add(domain)
-                            new_domains += 1
                 if not items:
                     break
+                before = len(domains)
+                domains.update(d.lower().strip() for d in strings(items) if d)
                 # Pages are random samples, so stop only after several
                 # consecutive pages add nothing new
-                if new_domains == 0:
-                    duplicate_pages += 1
-                else:
-                    duplicate_pages = 0
+                duplicate_pages = duplicate_pages + 1 if len(domains) == before else 0
                 if duplicate_pages >= 4:
                     break
         except Exception as e:
-            print(f"Error fetching {self.name} domains (keeping {len(domains)} domain(s) collected so far): {e}", file=sys.stderr)
-            return domains
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
+            # Keep what earlier pages gave us; with nothing, it's a plain failure
+            if not domains:
+                raise
+            self.warn(f"Stopped after {len(domains)} domain(s): {describe_error(e)}")
         return domains
 
 
-class OpenInboxFetcher(DomainFetcher):
-    """Fetcher for `openinbox io` disposable email domains"""
+class OpenInboxFetcher(JsonApiFetcher):
+    """Fetcher for 'openinbox io' disposable email domains"""
 
     def __init__(self):
-        super().__init__("OpenInbox")
-        self.url = "https://api.openinbox.io/api/inbox/platform-domains"
+        super().__init__("OpenInbox", "https://api.openinbox.io/api/inbox/platform-domains")
 
-    def fetch(self) -> Set[str]:
-        """Fetch platform (disposable inbox) domains from the OpenInbox API"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        if isinstance(data, dict) and "domains" in data:
-            for domain in data["domains"]:
-                domain = domain.lower().strip()
-                if domain:
-                    domains.add(domain)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-        return domains
+    def extract(self, data):
+        return strings(data.get("domains")) if isinstance(data, dict) else []
 
 
 class CleanTempMailFetcher(DomainFetcher):
-    """Fetcher for `cleantempmail com` disposable email domains"""
+    """Fetcher for 'cleantempmail com' disposable email domains"""
+
+    empty_hint = "The API may have changed."
+    limit = 2000
+    max_pages = 1000
 
     def __init__(self):
-        super().__init__("CleanTempMail")
-        self.url = "https://cleantempmail.com/api/domains"
-        self.limit = 2000
+        super().__init__("CleanTempMail", "https://cleantempmail.com/api/domains")
 
-    def fetch(self) -> Set[str]:
-        """Fetch all domains from the paginated CleanTempMail API.
-        """
-        domains = set()
+    def collect(self):
+        """Fetch all domains from the paginated API; any error discards the partial result"""
+        domains: Set[str] = set()
         offset = 0
 
-        max_pages = 1000
-
-        for _ in range(max_pages):
-            try:
-                response = get(
-                    self.url,
-                    params={"limit": self.limit, "offset": offset},
-                    timeout=30,
-                )
-                response.raise_for_status()
-                data = response.json()
-            except Exception as e:
-                print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-                return set()
+        for _ in range(self.max_pages):
+            data = self.get_json(params={"limit": self.limit, "offset": offset})
 
             if not isinstance(data, dict):
-                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
-                return set()
-
+                raise ValueError("malformed response")
             if data.get("success") is False:
-                print(f"Error from {self.name}: API reported failure", file=sys.stderr)
-                return set()
-
+                raise ValueError("API reported failure")
             page = data.get("data")
             if not isinstance(page, dict) or not isinstance(page.get("domains"), list):
-                print(f"Error parsing data from {self.name}: malformed response", file=sys.stderr)
-                return set()
+                raise ValueError("malformed response")
             page_domains = page["domains"]
 
             total = page.get("total")
@@ -299,11 +446,7 @@ class CleanTempMailFetcher(DomainFetcher):
                 total = None
 
             before = len(domains)
-            for domain in page_domains:
-                if isinstance(domain, str):
-                    normalized = domain.lower().strip()
-                    if normalized:
-                        domains.add(normalized)
+            domains.update(d.lower().strip() for d in strings(page_domains))
 
             # Stop when the API has nothing more for us, or when we either
             # reached the advertised total or made no forward progress.
@@ -315,101 +458,46 @@ class CleanTempMailFetcher(DomainFetcher):
             if len(domains) == before:
                 break
 
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The API may have changed.", file=sys.stderr)
-
         return domains
 
 
-class GeneratorEmailFetcher(DomainFetcher):
-    """Fetcher for 'generator.email' disposable email domains"""
+class GeneratorEmailFetcher(SamplingFetcher):
+    """Fetcher for 'generator email' disposable email domains.
+
+    Each page load selects a random domain from the pool and embeds it in the
+    page's JS config as cur_domain:"...", so the pool is sampled concurrently,
+    a few requests at a time.
+    """
+
+    attempts = 50
+    workers = 5
 
     def __init__(self):
-        super().__init__("GeneratorEmail")
-        self.url = "https://generator.email/"
+        super().__init__("GeneratorEmail", "https://generator.email/")
 
-    def _fetch_once(self, attempt: int, domain_pattern: "re.Pattern") -> Set[str]:
-        """Fetch and parse the randomly selected domain from a single page load"""
-        domains = set()
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains (attempt {attempt + 1}): {e}", file=sys.stderr)
-            return domains
-
-        # Each page load selects a random domain from the pool and embeds it
-        # in the page's JS config as cur_domain:"..."
-        match = re.search(r'cur_domain\s*:\s*["\']([^"\']+)["\']', response.text)
-        if match:
-            domain = match.group(1).lower().strip()
-            if domain_pattern.match(domain):
-                domains.add(domain)
-
-        return domains
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains by sampling page loads concurrently (domain rotates per load)"""
-        domains = set()
-        domain_pattern = re.compile(
-            r'^([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+)$'
-        )
-
-        with ThreadPoolExecutor(max_workers=50) as executor:
-            futures = [executor.submit(self._fetch_once, i, domain_pattern) for i in range(50)]
-            for future in as_completed(futures):
-                domains.update(future.result())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
+    def sample_once(self):
+        match = re.search(r'cur_domain\s*:\s*["\']([^"\']+)["\']', self.get().text)
+        return [match.group(1)] if match else []
 
 
-class CyberTempFetcher(DomainFetcher):
+class CyberTempFetcher(JsonApiFetcher):
     """Fetcher for 'cybertemp xyz' disposable email domains"""
 
     def __init__(self):
-        super().__init__("CyberTemp")
-        self.url = "https://api.cybertemp.xyz/getDomains"
+        super().__init__("CyberTemp", "https://api.cybertemp.xyz/getDomains")
 
-    def fetch(self) -> Set[str]:
-        """Fetch domains from CyberTemp API"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        # Handle list response: ["domain1.com", "domain2.com", ...]
+    def extract(self, data):
+        # Either ["domain1.com", ...] or {"domains": [...]} / {"data": [...]}
         if isinstance(data, list):
-            for entry in data:
-                if isinstance(entry, str) and entry:
-                    domains.add(entry.lower().strip())
-        # Handle object response: {"domains": [...]}
-        elif isinstance(data, dict):
+            return strings(data)
+        if isinstance(data, dict):
             for key in ("domains", "data"):
-                if key in data and isinstance(data[key], list):
-                    for entry in data[key]:
-                        if isinstance(entry, str) and entry:
-                            domains.add(entry.lower().strip())
-                    break
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
+                if isinstance(data.get(key), list):
+                    return strings(data[key])
+        return []
 
 
-class TempMailFetcher(DomainFetcher):
+class TempMailFetcher(SamplingFetcher):
     """Fetcher for 'temp-mail org' disposable email domains.
 
     temp-mail.org does not expose its domain list publicly (the /domains
@@ -422,667 +510,54 @@ class TempMailFetcher(DomainFetcher):
     handled by stopping early and returning the domains collected so far.
     """
 
-    def __init__(self):
-        super().__init__("TempMail")
-        self.url = "https://web2.temp-mail.org/mailbox"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from temp-mail.org by polling its mailbox endpoint"""
-        import time
-        domains = set()
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-            ),
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Origin": "https://temp-mail.org",
-            "Referer": "https://temp-mail.org/",
-        }
-        payload = {"method": "getMailBox", "params": {"lang": "en"}, "id": 1}
-        try:
-            for _ in range(30):
-                try:
-                    response = post(self.url, json=payload, headers=headers, timeout=15)
-                    # Stop early on hard blocks (Cloudflare 403, auth 401)
-                    if response.status_code in (401, 403):
-                        break
-                    # Stop on rate limit: {"errorMessage":"Too Many Request","errorName":"TooManyRequestsException"}
-                    if response.status_code == 429 or "TooManyRequests" in response.text:
-                        break
-                    response.raise_for_status()
-                    data = response.json()
-                    mailbox = data.get("mailbox", "")
-                    if isinstance(mailbox, str) and "@" in mailbox:
-                        domain = mailbox.rsplit("@", 1)[1].lower().strip()
-                        if domain:
-                            domains.add(domain)
-                except Exception:
-                    # Continue on individual request failures
-                    pass
-                finally:
-                    # Always wait between attempts, also after failures
-                    time.sleep(2)
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-
-        if not domains:
-            print(
-                f"Warning: No domains found from {self.name}. "
-                "This may be caused by rate limiting or IP/Cloudflare blocking, "
-                "or the endpoint may have changed.",
-                file=sys.stderr,
-            )
-
-        return domains
-
-
-class TempMailIOFetcher(DomainFetcher):
-    """Fetcher for 'temp-mail.io' disposable email domains.
-
-    temp-mail.io (a separate service from temp-mail.org) exposes its
-    active domain pool through a public JSON endpoint, so the domains can
-    be fetched directly.
-    """
+    empty_hint = (
+        "This may be caused by rate limiting or IP/Cloudflare blocking, "
+        "or the endpoint may have changed."
+    )
+    attempts = 30
+    delay = 2  # Wait between attempts, also after failures
+    max_failures = None
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Origin": "https://temp-mail.org",
+        "Referer": "https://temp-mail.org/",
+    }
+    payload = {"method": "getMailBox", "params": {"lang": "en"}, "id": 1}
 
     def __init__(self):
-        super().__init__("TempMail.io")
-        self.url = "https://api.internal.temp-mail.io/api/v2/domains"
+        super().__init__("TempMail", "https://web2.temp-mail.org/mailbox")
+
+    def sample_once(self):
+        # Not self.post(): the block/rate-limit checks need the response before raise_for_status
+        response = SESSION.post(self.url, json=self.payload, headers=self.headers, timeout=15)
+        # Stop early on hard blocks (Cloudflare 403, auth 401)
+        if response.status_code in (401, 403):
+            raise StopSampling(f"HTTP {response.status_code}")
+        # Stop on rate limit: {"errorMessage":"Too Many Request","errorName":"TooManyRequestsException"}
+        if response.status_code == 429 or "TooManyRequests" in response.text:
+            raise StopSampling("rate limited")
+        response.raise_for_status()
+        domain = domain_of(response.json().get("mailbox"))
+        return [domain] if domain else []
 
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the temp-mail.io public domains API"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        if isinstance(data, dict) and isinstance(data.get("domains"), list):
-            for entry in data["domains"]:
-                if isinstance(entry, str) and entry:
-                    domains.add(entry.lower().strip())
-        elif isinstance(data, list):
-            for entry in data:
-                if isinstance(entry, str) and entry:
-                    domains.add(entry.lower().strip())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class ThrowawayFetcher(DomainFetcher):
-    """Fetcher for 'throwaway io' disposable email domains.
-
-    throwaway.io lists its whole domain pool at a public JSON endpoint:
-    {"status": true, "data": {"domains": ["example.xyz", ...]}}
-    """
-
-    def __init__(self):
-        super().__init__("Throwaway")
-        self.url = "https://throwaway.io/api/ai/v1/domains"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the throwaway.io domains API"""
-        try:
-            # The server answers 403 to requests' default User-Agent
-            # (python-requests/x.y), so send one that names this project.
-            response = get(self.url, headers={"User-Agent": "disposable-email-domains fetcher"}, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        entries = data.get("data", {}).get("domains") if isinstance(data, dict) else None
-        if isinstance(entries, list):
-            for entry in entries:
-                if isinstance(entry, str) and entry.strip():
-                    domains.add(entry.lower().strip())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class TempMailCloudFetcher(DomainFetcher):
-    """Fetcher for 'tempmail cloud' disposable email domains.
-
-    tempmail.cloud publishes its domain pool in its public app config:
-    {"domains": [{"domain": "example.store", "active": true, "privateOwnerId": null, ...}, ...]}
-    """
-
-    def __init__(self):
-        super().__init__("TempMail.cloud")
-        self.url = "https://tempmail.cloud/api/config"
-
-    def fetch(self) -> Set[str]:
-        """Fetch active public domains from the tempmail.cloud config API"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        entries = data.get("domains") if isinstance(data, dict) else None
-        if isinstance(entries, list):
-            for entry in entries:
-                if not isinstance(entry, dict) or entry.get("active") is not True:
-                    continue
-                # Skip domains a user has claimed privately; only the shared pool is disposable for sure
-                if entry.get("privateOwnerId"):
-                    continue
-                domain = entry.get("domain")
-                if isinstance(domain, str) and domain.strip():
-                    domains.add(domain.lower().strip())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class Mail123Fetcher(DomainFetcher):
-    """Fetcher for 'mail123 fr' disposable email domains.
-
-    mail123.fr lists its domain pool at a public JSON endpoint:
-    {"success": true, "domains": ["mail123.fr", ...], "primary": "mail123.fr", ...}
-    """
-
-    def __init__(self):
-        super().__init__("Mail123")
-        self.url = "https://mail123.fr/api/v1/domains"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the mail123.fr domains API"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        try:
-            data = response.json()
-        except Exception as e:
-            print(f"Error parsing JSON from {self.name}: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        entries = data.get("domains") if isinstance(data, dict) else None
-        if isinstance(entries, list):
-            for entry in entries:
-                if isinstance(entry, str) and entry.strip():
-                    domains.add(entry.lower().strip())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class CatchMailFetcher(DomainFetcher):
-    """Fetcher for 'catchmail io' disposable email domains.
-
-    catchmail.io has no public domains endpoint; the homepage renders the
-    domain picker server-side as <select><option value="example.com">...,
-    and also embeds the same list in the Next.js payload as
-    {"domains":[{"domain":"example.com"},...]}.
-    """
-
-    def __init__(self):
-        super().__init__("CatchMail")
-        self.url = "https://catchmail.io/"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the catchmail.io homepage domain picker"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        soup = BeautifulSoup(response.text, "html.parser")
-        for select in soup.find_all("select"):
-            for option in select.find_all("option"):
-                value = (option.get("value") or option.get_text() or "").strip().lower()
-                if "." in value:
-                    domains.add(value)
-
-        # Fallback: the Next.js flight payload (quotes may be backslash-escaped)
-        if not domains:
-            for match in re.findall(r'\\?"domain\\?":\\?"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\\?"', response.text):
-                domains.add(match.lower())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class TempFastMailFetcher(DomainFetcher):
-    """Fetcher for 'tempfastmail com' disposable email domains.
-
-    tempfastmail.com has no domain list; each POST to /api/email-box creates a
-    mailbox on a random domain from its pool:
-    {"email": "name@example.com", "uuid": "..."}
-    so the pool is collected by sampling several mailboxes.
-    """
-
-    def __init__(self, attempts: int = 20):
-        super().__init__("TempFastMail")
-        self.url = "https://tempfastmail.com/api/email-box"
-        self.attempts = attempts
-
-    def fetch(self) -> Set[str]:
-        """Collect domains by creating a number of mailboxes"""
-        domains = set()
-        failures = 0
-        for _ in range(self.attempts):
-            try:
-                response = post(self.url, json={}, timeout=15)
-                response.raise_for_status()
-                email = response.json().get("email")
-            except Exception as e:
-                failures += 1
-                print(f"Error fetching {self.name} mailbox: {e}", file=sys.stderr)
-                # Give up early if the service is down or blocking us
-                if failures >= 3 and not domains:
-                    break
-                continue
-
-            if isinstance(email, str) and "@" in email:
-                domain = email.rsplit("@", 1)[1].strip().lower()
-                if domain:
-                    domains.add(domain)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The API response may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class TenMinuteMailNetFetcher(DomainFetcher):
-    """Fetcher for '10minutemail net' disposable email domains.
-
-    The homepage pre-generates an address into <input id="fe_text" value="name@example.com">.
-    """
-
-    def __init__(self):
-        super().__init__("10MinuteMail.net")
-        self.url = "https://10minutemail.net/"
-
-    def fetch(self) -> Set[str]:
-        """Fetch the domain of the address generated on the 10minutemail.net homepage"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        soup = BeautifulSoup(response.text, "html.parser")
-        field = soup.find("input", id="fe_text")
-        value = (field.get("value") or "") if field else ""
-        if "@" in value:
-            domain = value.rsplit("@", 1)[1].strip().lower()
-            if domain:
-                domains.add(domain)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class DisposableMailFetcher(DomainFetcher):
-    """Fetcher for 'disposablemail com' disposable email domains.
-
-    The homepage shows the mailbox domain in a read-only <input value="@example.com">.
-    """
-
-    def __init__(self):
-        super().__init__("DisposableMail")
-        self.url = "https://www.disposablemail.com/"
-
-    def fetch(self) -> Set[str]:
-        """Fetch the domain shown on the disposablemail.com homepage"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        soup = BeautifulSoup(response.text, "html.parser")
-        for field in soup.find_all("input"):
-            value = (field.get("value") or "").strip().lower()
-            if value.startswith("@") and "." in value:
-                domains.add(value[1:])
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class FakeMailGeneratorFetcher(DomainFetcher):
-    """Fetcher for 'fakemailgenerator com' disposable email domains.
-
-    The homepage lists all domains in the dropdown next to #domain-select:
-    <ul class="dropdown-menu"><a href="#">@example.com</a>...</ul>
-    """
-
-    def __init__(self):
-        super().__init__("FakeMailGenerator")
-        self.url = "https://www.fakemailgenerator.com/"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the fakemailgenerator.com domain dropdown"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        soup = BeautifulSoup(response.text, "html.parser")
-        for link in soup.select("ul.dropdown-menu a"):
-            text = link.get_text(strip=True).lower()
-            if text.startswith("@") and "." in text:
-                domains.add(text[1:])
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class AnonymMailFetcher(DomainFetcher):
-    """Fetcher for 'anonymmail net' disposable email domains.
-
-    Each homepage load generates an address on a random domain from the pool,
-    shown as <b class="email">name@example.com</b>, so the pool is sampled.
-    """
-
-    def __init__(self, attempts: int = 25):
-        super().__init__("AnonymMail")
-        self.url = "https://anonymmail.net/"
-        self.attempts = attempts
-
-    def fetch(self) -> Set[str]:
-        """Collect domains by loading the anonymmail.net homepage several times"""
-        domains = set()
-        failures = 0
-        for _ in range(self.attempts):
-            try:
-                response = get(self.url, timeout=30)
-                response.raise_for_status()
-            except Exception as e:
-                failures += 1
-                print(f"Error fetching {self.name} page: {e}", file=sys.stderr)
-                # Give up early if the site is down or blocking us
-                if failures >= 3 and not domains:
-                    break
-                continue
-
-            soup = BeautifulSoup(response.text, "html.parser")
-            for tag in soup.find_all(class_="email"):
-                text = tag.get_text(strip=True)
-                if "@" in text:
-                    domain = text.rsplit("@", 1)[1].strip().lower()
-                    if domain:
-                        domains.add(domain)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class MailBlinkerFetcher(DomainFetcher):
-    """Fetcher for 'mailblinker com' disposable email domains.
-
-    Each page load generates an address on a random domain from the pool,
-    shown as <span id="mail_address">name@example.com</span>, so the pool is sampled.
-    """
-
-    def __init__(self, attempts: int = 10):
-        super().__init__("MailBlinker")
-        # The bare domain answers with a meta-refresh to /en
-        self.url = "https://mailblinker.com/en"
-        self.attempts = attempts
-
-    def fetch(self) -> Set[str]:
-        """Collect domains by loading the mailblinker.com page several times"""
-        domains = set()
-        failures = 0
-        for _ in range(self.attempts):
-            try:
-                response = get(self.url, timeout=30)
-                response.raise_for_status()
-            except Exception as e:
-                failures += 1
-                print(f"Error fetching {self.name} page: {e}", file=sys.stderr)
-                # Give up early if the site is down or blocking us
-                if failures >= 3 and not domains:
-                    break
-                continue
-
-            soup = BeautifulSoup(response.text, "html.parser")
-            tag = soup.find(id="mail_address")
-            text = tag.get_text(strip=True) if tag else ""
-            if "@" in text:
-                domain = text.rsplit("@", 1)[1].strip().lower()
-                if domain:
-                    domains.add(domain)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class USMailFetcher(DomainFetcher):
-    """Fetcher for 'usmail one' disposable email domains.
-
-    usmail.one (redirects to 1mail.lt) renders its domain picker server-side:
-    <select id="name_domain"><optgroup label="Free Domains"><option value="example.com">...
-    """
-
-    def __init__(self):
-        super().__init__("USMail")
-        self.url = "https://usmail.one/"
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains from the usmail.one domain picker"""
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-            return set()
-
-        domains = set()
-        soup = BeautifulSoup(response.text, "html.parser")
-        select = soup.find("select", id="name_domain")
-        if select:
-            for option in select.find_all("option"):
-                # Only the free groups; premium/paid domains are not handed out for free
-                group = option.find_parent("optgroup")
-                if group and "free" not in (group.get("label") or "").lower():
-                    continue
-                value = (option.get("value") or "").strip().lower()
-                if "." in value:
-                    domains.add(value)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-class EmailFakeFetcher(DomainFetcher):
-    """Fetcher for 'email-fake com' disposable email domains."""
-
-    def __init__(self):
-        super().__init__("Email-Fake")
-        self.url = "https://email-fake.com"
-
-    def _fetch_once(self, attempt: int, domain_pattern: "re.Pattern") -> Set[str]:
-        """Fetch and parse domains from a single page load"""
-        domains = set()
-        try:
-            response = get(self.url, timeout=30)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching {self.name} domains (attempt {attempt + 1}): {e}", file=sys.stderr)
-            return domains
-
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Domains appear as <p id="domain.tld"> inside the .fem.tt-suggestions div
-        suggestions_div = soup.find("div", class_=lambda c: c and "tt-suggestions" in c.split())
-        if suggestions_div:
-            for p_tag in suggestions_div.find_all("p", id=True):
-                candidate = p_tag["id"].strip().lower()
-                if candidate and domain_pattern.match(candidate):
-                    domains.add(candidate)
-
-        # Fallback: scan all <p id="..."> on the page
-        if not domains:
-            for p_tag in soup.find_all("p", id=True):
-                candidate = p_tag["id"].strip().lower()
-                if candidate and domain_pattern.match(candidate):
-                    domains.add(candidate)
-
-        return domains
-
-    def fetch(self) -> Set[str]:
-        """Fetch domains by sampling page loads concurrently (pool may rotate per load)"""
-        domains = set()
-        domain_pattern = re.compile(
-            r'^([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+)$'
-        )
-
-        with ThreadPoolExecutor(max_workers=50) as executor:
-            futures = [executor.submit(self._fetch_once, i, domain_pattern) for i in range(50)]
-            for future in as_completed(futures):
-                domains.update(future.result())
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
-        return domains
-
-
-def load_existing_domains(filename: str) -> Set[str]:
-    """Load existing domains from blocklist file"""
-    try:
-        with open(filename, 'r') as f:
-            return set(line.strip().lower() for line in f if line.strip())
-    except FileNotFoundError:
-        print(f"Warning: {filename} not found, starting with empty list", file=sys.stderr)
-        return set()
-
-
-def add_domains_to_blocklist(new_domains: Set[str], filename: str, source_name: str = "") -> int:
-    """Add new domains to the blocklist file"""
-    existing = load_existing_domains(filename)
-    missing = new_domains - existing
-
-    if not missing:
-        if source_name:
-            print(f"No new domains to add from {source_name}.")
-        else:
-            print("No new domains to add.")
-        return 0
-
-    print(f"Found {len(missing)} new domains to add from {source_name}:")
-    for domain in sorted(missing):
-        print(f"  + {domain}")
-
-    # Merge with existing and write back sorted alphabetically (case-insensitive)
-    merged = existing | set(d for d in missing if d)
-    with open(filename, 'w') as f:
-        for domain in sorted(merged, key=lambda s: s.lower()):
-            f.write(f"{domain}\n")
-
-    return len(missing)
-
-
-def is_valid_level_domain(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
-    """Check if the domain is a valid-level domain"""
-    parts = domain.split('.')
-    public_valid = local_valid = False
-    if len(psl.privateparts(domain)) == 1:
-        public_valid = True
-    for i in range(len(parts)):
-        suffix = '.'.join(parts[i:])
-        if suffix in psl_local:
-            private_parts = parts[:i]
-            if len(private_parts) == 1:
-                local_valid = True
-                break
-    if public_valid or local_valid:
-        return True
-    else:
-        return False
-
-
-def is_public_suffix(domain: str, psl: PublicSuffixList, psl_local: Set) -> bool:
-    """Check if the domain is a public suffix"""
-    return (psl.publicsuffix(domain) == domain) or (domain in psl_local)
 
 class MailTmApiFetcher(DomainFetcher):
     """Base fetcher for services that serve the mail.tm domains API"""
 
     def __init__(self, name: str, url: str, status_key: str):
-        super().__init__(name)
-        self.url = url
+        super().__init__(name, url)
         # The field that marks a domain usable: mail.tm sends `isActive`, other
         # services running its API may send a different flag (DuckMail: `isVerified`)
         self.status_key = status_key
 
-    def fetch(self) -> Set[str]:
+    def collect(self):
         """Fetch active domains from a mail.tm-style public domains API (paginated)"""
-        domains = set()
+        domains: Set[str] = set()
         page_size = None
         try:
             for page in range(1, 6):
-                response = get(f"{self.url}?page={page}", timeout=30)
-                response.raise_for_status()
-                data = response.json()
+                data = self.get_json(f"{self.url}?page={page}")
                 member = data.get("hydra:member")
                 if not isinstance(member, list) or not member:
                     break
@@ -1090,22 +565,18 @@ class MailTmApiFetcher(DomainFetcher):
                 if page_size is None:
                     page_size = len(member)
                 for entry in member:
-                    if not isinstance(entry, dict):
-                        continue
-                    if entry.get(self.status_key) is not True:
-                        continue
-                    domain = entry.get("domain")
-                    if isinstance(domain, str) and domain:
-                        domains.add(domain.lower().strip())
+                    if isinstance(entry, dict) and entry.get(self.status_key) is True:
+                        domain = entry.get("domain")
+                        if isinstance(domain, str) and domain:
+                            domains.add(domain)
                 # Stop when a page returns fewer items than the first page did
                 if len(member) < page_size:
                     break
         except Exception as e:
-            print(f"Error fetching {self.name} domains: {e}", file=sys.stderr)
-
-        if not domains:
-            print(f"Warning: No domains found from {self.name}. The page structure may have changed.", file=sys.stderr)
-
+            # Keep what earlier pages gave us; with nothing, it's a plain failure
+            if not domains:
+                raise
+            self.warn(f"Stopped after {len(domains)} domain(s): {describe_error(e)}")
         return domains
 
 
@@ -1126,6 +597,254 @@ class DuckMailFetcher(MailTmApiFetcher):
 
     def __init__(self):
         super().__init__("DuckMail", "https://api.duckmail.sbs/domains", "isVerified")
+
+
+class TempMailIOFetcher(JsonApiFetcher):
+    """Fetcher for 'temp-mail io' disposable email domains.
+
+    temp-mail.io (a separate service from temp-mail.org) exposes its
+    active domain pool through a public JSON endpoint.
+    """
+
+    empty_hint = "The page structure may have changed."
+
+    def __init__(self):
+        super().__init__("TempMail.io", "https://api.internal.temp-mail.io/api/v2/domains")
+
+    def extract(self, data):
+        if isinstance(data, dict):
+            return strings(data.get("domains"))
+        return strings(data)
+
+
+class ThrowawayFetcher(JsonApiFetcher):
+    """Fetcher for 'throwaway io' disposable email domains.
+
+    throwaway.io lists its whole domain pool at a public JSON endpoint:
+    {"status": true, "data": {"domains": ["example.xyz", ...]}}
+    It answers 403 to requests' default User-Agent; the session's browser one works.
+    """
+
+    def __init__(self):
+        super().__init__("Throwaway", "https://throwaway.io/api/ai/v1/domains")
+
+    def extract(self, data):
+        inner = data.get("data") if isinstance(data, dict) else None
+        return strings(inner.get("domains")) if isinstance(inner, dict) else []
+
+
+class TempMailCloudFetcher(JsonApiFetcher):
+    """Fetcher for 'tempmail cloud' disposable email domains.
+
+    tempmail.cloud publishes its domain pool in its public app config:
+    {"domains": [{"domain": "example.store", "active": true, "privateOwnerId": null, ...}, ...]}
+    """
+
+    def __init__(self):
+        super().__init__("TempMail.cloud", "https://tempmail.cloud/api/config")
+
+    def extract(self, data):
+        entries = data.get("domains") if isinstance(data, dict) else None
+        if not isinstance(entries, list):
+            return []
+        return [
+            entry["domain"]
+            for entry in entries
+            if isinstance(entry, dict)
+            and entry.get("active") is True
+            # Skip domains a user has claimed privately; only the shared pool is disposable for sure
+            and not entry.get("privateOwnerId")
+            and isinstance(entry.get("domain"), str)
+        ]
+
+
+class Mail123Fetcher(JsonApiFetcher):
+    """Fetcher for 'mail123 fr' disposable email domains.
+
+    mail123.fr lists its domain pool at a public JSON endpoint:
+    {"success": true, "domains": ["mail123.fr", ...], "primary": "mail123.fr", ...}
+    """
+
+    def __init__(self):
+        super().__init__("Mail123", "https://mail123.fr/api/v1/domains")
+
+    def extract(self, data):
+        return strings(data.get("domains")) if isinstance(data, dict) else []
+
+
+class CatchMailFetcher(HtmlFetcher):
+    """Fetcher for 'catchmail io' disposable email domains.
+
+    catchmail.io has no public domains endpoint; the homepage renders the
+    domain picker server-side as <select><option value="example.com">...,
+    and also embeds the same list in the Next.js payload as
+    {"domains":[{"domain":"example.com"},...]}.
+    """
+
+    def __init__(self):
+        super().__init__("CatchMail", "https://catchmail.io/")
+
+    def parse(self, soup, html):
+        domains = set()
+        for select in soup.find_all("select"):
+            for option in select.find_all("option"):
+                value = (option.get("value") or option.get_text() or "").strip()
+                if "." in value:
+                    domains.add(value)
+        # Fallback: the Next.js flight payload (quotes may be backslash-escaped)
+        if not domains:
+            domains.update(re.findall(r'\\?"domain\\?":\\?"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\\?"', html))
+        return domains
+
+
+class TempFastMailFetcher(SamplingFetcher):
+    """Fetcher for 'tempfastmail com' disposable email domains.
+
+    tempfastmail.com has no domain list; each POST to /api/email-box creates a
+    mailbox on a random domain from its pool:
+    {"email": "name@example.com", "uuid": "..."}
+    so the pool is collected by sampling several mailboxes.
+    """
+
+    empty_hint = "The API response may have changed."
+    attempts = 20
+
+    def __init__(self):
+        super().__init__("TempFastMail", "https://tempfastmail.com/api/email-box")
+
+    def sample_once(self):
+        domain = domain_of(self.post(json={}, timeout=15).json().get("email"))
+        return [domain] if domain else []
+
+
+class TenMinuteMailNetFetcher(HtmlFetcher):
+    """Fetcher for '10minutemail net' disposable email domains.
+
+    The homepage pre-generates an address into <input id="fe_text" value="name@example.com">.
+    """
+
+    def __init__(self):
+        super().__init__("10MinuteMail.net", "https://10minutemail.net/")
+
+    def parse(self, soup, html):
+        field = soup.find("input", id="fe_text")
+        domain = domain_of(field.get("value")) if field else None
+        return [domain] if domain else []
+
+
+class DisposableMailFetcher(HtmlFetcher):
+    """Fetcher for 'disposablemail com' disposable email domains.
+
+    The homepage shows the mailbox domain in a read-only <input value="@example.com">.
+    """
+
+    def __init__(self):
+        super().__init__("DisposableMail", "https://www.disposablemail.com/")
+
+    def parse(self, soup, html):
+        values = ((field.get("value") or "").strip() for field in soup.find_all("input"))
+        return [value[1:] for value in values if value.startswith("@") and "." in value]
+
+
+class FakeMailGeneratorFetcher(HtmlFetcher):
+    """Fetcher for 'fakemailgenerator com' disposable email domains.
+
+    The homepage lists all domains in the dropdown next to #domain-select:
+    <ul class="dropdown-menu"><a href="#">@example.com</a>...</ul>
+    """
+
+    def __init__(self):
+        super().__init__("FakeMailGenerator", "https://www.fakemailgenerator.com/")
+
+    def parse(self, soup, html):
+        texts = (link.get_text(strip=True) for link in soup.select("ul.dropdown-menu a"))
+        return [text[1:] for text in texts if text.startswith("@") and "." in text]
+
+
+class AnonymMailFetcher(SamplingFetcher):
+    """Fetcher for 'anonymmail net' disposable email domains.
+
+    Each homepage load generates an address on a random domain from the pool,
+    shown as <b class="email">name@example.com</b>, so the pool is sampled.
+    """
+
+    attempts = 25
+
+    def __init__(self):
+        super().__init__("AnonymMail", "https://anonymmail.net/")
+
+    def sample_once(self):
+        tags = self.get_soup().find_all(class_="email")
+        return [d for d in (domain_of(tag.get_text(strip=True)) for tag in tags) if d]
+
+
+class MailBlinkerFetcher(SamplingFetcher):
+    """Fetcher for 'mailblinker com' disposable email domains.
+
+    Each page load generates an address on a random domain from the pool,
+    shown as <span id="mail_address">name@example.com</span>, so the pool is sampled.
+    """
+
+    attempts = 10
+
+    def __init__(self):
+        # The bare domain answers with a meta-refresh to /en
+        super().__init__("MailBlinker", "https://mailblinker.com/en")
+
+    def sample_once(self):
+        tag = self.get_soup().find(id="mail_address")
+        domain = domain_of(tag.get_text(strip=True)) if tag else None
+        return [domain] if domain else []
+
+
+class USMailFetcher(HtmlFetcher):
+    """Fetcher for 'usmail one' disposable email domains.
+
+    usmail.one (redirects to 1mail.lt) renders its domain picker server-side:
+    <select id="name_domain"><optgroup label="Free Domains"><option value="example.com">...
+    """
+
+    def __init__(self):
+        super().__init__("USMail", "https://usmail.one/")
+
+    def parse(self, soup, html):
+        select = soup.find("select", id="name_domain")
+        if not select:
+            return []
+        domains = []
+        for option in select.find_all("option"):
+            # Only the free groups; premium/paid domains are not handed out for free
+            group = option.find_parent("optgroup")
+            if group and "free" not in (group.get("label") or "").lower():
+                continue
+            value = (option.get("value") or "").strip()
+            if "." in value:
+                domains.append(value)
+        return domains
+
+
+class EmailFakeFetcher(SamplingFetcher):
+    """Fetcher for 'email-fake com' disposable email domains.
+
+    Domains appear as <p id="domain.tld"> inside the .tt-suggestions div, and
+    the list changes between page loads, so the page is sampled concurrently,
+    a few requests at a time.
+    """
+
+    attempts = 50
+    workers = 5
+
+    def __init__(self):
+        super().__init__("Email-Fake", "https://email-fake.com")
+
+    def sample_once(self):
+        soup = self.get_soup()
+        suggestions = soup.find("div", class_=lambda c: c and "tt-suggestions" in c.split())
+        tags = suggestions.find_all("p", id=True) if suggestions else []
+        # Fallback: any <p id="..."> on the page; ids that aren't domains are dropped by fetch()
+        if not tags:
+            tags = soup.find_all("p", id=True)
+        return [tag["id"] for tag in tags]
 
 
 # Registry of all domain fetchers
@@ -1158,22 +877,41 @@ FETCHERS = [
 ]
 
 
+# --- Blocklist update ------------------------------------------------------
+
+
+def load_existing_domains(filename: str) -> Set[str]:
+    """Load existing domains from blocklist file"""
+    try:
+        with open(filename, 'r') as f:
+            return set(line.strip().lower() for line in f if line.strip())
+    except FileNotFoundError:
+        print(f"Warning: {filename} not found, starting with empty list", file=sys.stderr)
+        return set()
+
+
+def write_blocklist(domains: Set[str], filename: str) -> None:
+    """Write the blocklist sorted alphabetically (case-insensitive), one domain per line"""
+    with open(filename, 'w') as f:
+        for domain in sorted(domains, key=str.lower):
+            f.write(f"{domain}\n")
+
+
 def main():
     """Main function to run all registered domain fetchers"""
     blocklist_file = "disposable_email_blocklist.conf"
-    with open("publicsuffixlist.local", "r") as psl_local_file:
-        psl_local = set(line.strip() for line in psl_local_file if line.strip())
+    psl_local = load_local_suffixes()
 
-    psl = None
     # Load the public suffix list once, to filter out subdomains
     try:
-        resp = get("https://publicsuffix.org/list/public_suffix_list.dat", timeout=30)
-        resp.raise_for_status()
-        psl = PublicSuffixList(resp.text.splitlines())
+        psl = download_public_suffix_list()
     except Exception as e:
         print(f"Error loading Public Suffix List: {e}", file=sys.stderr)
         sys.exit(1)
 
+    existing = load_existing_domains(blocklist_file)
+    # Domains new to the blocklist, from all sources; written once at the end
+    new_domains: Set[str] = set()
     total_added = 0
     sources_processed = 0
     stats = {}  # Track statistics per fetcher
@@ -1197,7 +935,17 @@ def main():
 
             added = 0
             if domains:
-                added = add_domains_to_blocklist(domains, blocklist_file, fetcher.get_name())
+                # A domain counts for the first source that brought it, as when
+                # each source was written to the file in turn
+                missing = domains - existing - new_domains
+                if missing:
+                    print(f"Found {len(missing)} new domains to add from {fetcher.get_name()}:")
+                    for domain in sorted(missing):
+                        print(f"  + {domain}")
+                else:
+                    print(f"No new domains to add from {fetcher.get_name()}.")
+                new_domains |= missing
+                added = len(missing)
                 total_added += added
                 sources_processed += 1
             else:
@@ -1209,16 +957,22 @@ def main():
                 "added": added,
                 "raw": raw_count
             }
+            if fetcher.warnings:
+                stats[fetcher.get_name()]["warning"] = "; ".join(fetcher.warnings)
         except Exception as e:
-            print(f"Error processing {fetcher.get_name()}: {e}", file=sys.stderr)
+            error = describe_error(e)
+            print(f"Error processing {fetcher.get_name()}: {error}", file=sys.stderr)
             # Record failed fetcher with zero counts
             stats[fetcher.get_name()] = {
                 "found": 0,
                 "added": 0,
                 "raw": 0,
-                "error": str(e)
+                "error": error
             }
             continue
+
+    if new_domains:
+        write_blocklist(existing | new_domains, blocklist_file)
 
     # Write statistics to JSON file for workflow to consume
     with open("fetch_stats.json", "w") as f:

@@ -35,9 +35,6 @@ jobs:
       - name: Generate statistics for PR
         id: stats
         run: python3 scripts/generate_stats.py
-      - name: Run maintain script
-        run: |
-          bash maintain.sh
       - name: Verify blocklist
         run: |
           python verify.py --fix
